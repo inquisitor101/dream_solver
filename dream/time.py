@@ -107,7 +107,7 @@ class Scheme(Configuration, is_interface=True):
 
     root: SolverConfiguration
 
-    def __init__(self, mesh, root = None, **default):
+    def __init__(self, mesh, root=None, **default):
 
         self._compile = {'realcompile': False, 'wait': False, 'keep_files': False}
 
@@ -133,28 +133,68 @@ class Scheme(Configuration, is_interface=True):
     def add_sum_of_integrals(self,
                              form: ngs.LinearForm | ngs.BilinearForm,
                              integrals: Integrals,
-                             *pass_terms: str,
-                             fespace: str = None) -> None:
+                             name: str = "form") -> None:
 
-        # Determine which spaces to iterate over.
-        spaces = [fespace] if fespace else integrals.keys()
+        logger.debug(f"Adding forms to {name}...")
 
-        for space in spaces:
-            if space not in integrals:
-                raise KeyError(f"Error: '{space}' not found in integrals.")
+        for space, terms in integrals.items():
 
-            for term, cf in integrals[space].items():
-                if term in pass_terms:
+            for term, cf in terms.items():
 
-                    logger.debug(f"Skipping {term} for space {space}!")
-                    continue
-
-                logger.debug(f"Adding {term} term for space {space}!")
+                logger.debug(f"  Adding {term} term for space {space} to {name}!")
 
                 if self.compile['realcompile']:
                     form += cf.Compile(**self.compile)
                 else:
                     form += cf
+
+        logger.debug("Done.")
+
+    def parse_sum_of_integrals(self,
+                               integrals: Integrals,
+                               include_spaces: tuple[str, ...] = None,
+                               exclude_spaces: tuple[str, ...] = None,
+                               include_terms: tuple[str, ...] = None,
+                               exclude_terms: tuple[str, ...] = None) -> Integrals:
+        """ Parse the sum of integrals dictionary to include or exclude specific spaces and terms.
+
+            By default, it includes all spaces and terms in the integrals. You can specify which spaces to include 
+            or exclude, and which terms to include or exclude. If a space or term in the include container 
+            is not found in the integrals dictionary, it will raise an error.
+        """
+
+        # Get the spaces to iterate over. If None, include all spaces.
+        spaces = include_spaces
+        if spaces is None:
+            spaces = tuple(integrals)
+
+        # Exclude spaces if specified
+        if exclude_spaces is not None:
+            spaces = tuple(space for space in spaces if space not in exclude_spaces)
+
+        # Prevent modification of the original integrals dictionary and throw an error if a space is not found
+        integrals = {space: integrals[space].copy() for space in spaces}
+
+        # Parse exclude terms
+        if exclude_terms is not None:
+
+            for space in list(integrals):
+                for term in exclude_terms:
+                    if term in integrals[space]:
+                        integrals[space].pop(term)
+
+                if not integrals[space]:
+                    integrals.pop(space)
+
+        # Parse include terms. Throws an error if a term is not found
+        if include_terms is not None:
+            integrals = {space: {term: integral[term] for term in include_terms}
+                         for space, integral in integrals.items()}
+
+        # Omit empty integrals
+        integrals = {space: {term: cf for term, cf in integral.items() if cf} for space, integral in integrals.items()}
+
+        return integrals
 
     def assemble(self) -> None:
         raise NotImplementedError("Overload this method in derived class!")

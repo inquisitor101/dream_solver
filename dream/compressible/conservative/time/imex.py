@@ -43,7 +43,8 @@ class IMEXRKSchemes(TimeSchemes):
 
             # For the hybrid DG-HDG scheme, we only need to skip the 'convection' term in blf,
             # since everything else is handled within the DG_HDG class.
-            self.add_sum_of_integrals(self.blf, self.root.fem.blf, 'convection')
+            integrals = self.parse_sum_of_integrals(self.root.fem.blf, exclude_terms=('convection',))
+            self.add_sum_of_integrals(self.blf, integrals, "imex bilinear form")
         
         elif self.root.fem.method.name == "hdg":
 
@@ -55,37 +56,22 @@ class IMEXRKSchemes(TimeSchemes):
             # facets (Uhat-space), but treat the 'convection' term explicitly on the volume (U-space).
 
             # Determine which spaces to iterate over.
-            integrals = self.root.fem.blf
-            form = self.blf
-            pass_terms = 'convection'
-            spaces = integrals.keys()
 
-            for space in spaces:
-                if space not in integrals:
-                    logger.warning(f"Space '{space}' not found in integrals. Skipping.")
-                    continue
-
-                for term, cf in integrals[space].items():
-                    if term in pass_terms and space == "U":
-                        logger.debug(f"Skipping {term} for space {space}!")
-                        continue
-
-                    logger.debug(f"Adding {term} term for space {space}!")
-
-                    if self.compile['realcompile']:
-                        form += cf.Compile(**self.compile)
-                    else:
-                        form += cf
+            integrals = self.parse_sum_of_integrals(self.root.fem.blf, include_spaces=['U'], exclude_terms=('convection',))
+            integrals.update(self.parse_sum_of_integrals(self.root.fem.blf, exclude_spaces=['U']))
+            self.add_sum_of_integrals(self.blf, integrals, "imex bilinear form")
 
         else:
             # As of now, only HDG and DG-HDG discretizations are possible with IMEXRK schemes.
             raise ValueError("IMEXRK currently can be used either with HDG or DG-HDG discretizations.")
 
         # Skip the mass matrix and convection contribution in blfs and only use the space for "U".
-        self.add_sum_of_integrals(self.blfs, self.root.fem.blf, 'mass', 'convection', fespace='U')
+        integrals = self.parse_sum_of_integrals(self.root.fem.blf, include_spaces=['U'], exclude_terms=('mass', 'convection'))
+        self.add_sum_of_integrals(self.blfs, integrals, "imex bilinear form for splitting")
 
         # Add only the convection part in blfe, as this is handled explicitly in time.
-        self.add_sum_of_integrals(self.blfe, self.root.fem.blf, 'mass', 'diffusion', fespace='U')
+        integrals = self.parse_sum_of_integrals(self.root.fem.blf, include_spaces=['U'], exclude_terms=('mass', 'diffusion'))
+        self.add_sum_of_integrals(self.blfe, integrals, "imex bilinear form for explicit convection")
 
         # Initialize the nonlinear solver here. Notice, it uses a reference to blf, rhs and gfu.
         self.root.nonlinear_solver.initialize(self.blf, self.rhs, self.root.fem.gfu)

@@ -19,8 +19,8 @@ class ImplicitSchemes(TimeSchemes):
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
         self.lf = ngs.LinearForm(self.root.fem.fes)
 
-        self.add_sum_of_integrals(self.blf, self.root.fem.blf)
-        self.add_sum_of_integrals(self.lf, self.root.fem.lf)
+        self.add_sum_of_integrals(self.blf, self.root.fem.blf, 'implicit bilinear form')
+        self.add_sum_of_integrals(self.lf, self.root.fem.lf, 'linear form')
 
         self.root.nonlinear_solver.initialize(self.blf, self.lf.vec, self.root.fem.gfu)
 
@@ -185,9 +185,11 @@ class DIRKSchemes(TimeSchemes):
         self.mass.Assemble()
         
         # Add both spatial and mass-matrix terms in blf.
-        self.add_sum_of_integrals(self.blf, self.root.fem.blf)
+        self.add_sum_of_integrals(self.blf, self.root.fem.blf, 'implicit bilinear form')
+
         # Skip the mass matrix contribution in blfs and only use the space for "U".
-        self.add_sum_of_integrals(self.blfs, self.root.fem.blf, 'mass', fespace='U')
+        integrals = self.parse_sum_of_integrals(self.root.fem.blf, include_spaces=['U'], exclude_terms=('mass',))
+        self.add_sum_of_integrals(self.blfs, integrals, "implicit bilinear form for splitting")
 
         # Initialize the nonlinear solver here. Notice, it uses a reference to blf, rhs and gfu.
         self.root.nonlinear_solver.initialize(self.blf, self.rhs, self.root.fem.gfu)

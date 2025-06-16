@@ -212,8 +212,10 @@ class DIRKSchemes(TimeSchemes):
         
         # Add both spatial and mass-matrix terms in blf.
         self.add_sum_of_integrals(self.blf, self.root.fem.blf)
+    
         # Skip the mass matrix contribution in blfs and only use the space for "U".
-        self.add_sum_of_integrals(self.blfs, self.root.fem.blf, 'mass', fespace='U')
+        integrals = self.parse_sum_of_integrals(self.root.fem.blf, include_spaces=['U'], exclude_terms=('mass',))
+        self.add_sum_of_integrals(self.blfs, integrals)
 
         # We do this as a wrapper, which decides how to assemble self.blf, which avoids a bug(?) in the assembly.
         self.assemble_bilinear_form(self.blf)

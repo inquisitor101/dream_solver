@@ -36,7 +36,7 @@ class ExplicitSchemes(TimeSchemes):
         self.root.fem.blf['U'].pop('mass')
 
         # Process all items in the relevant bilinear and linear forms.
-        self.add_sum_of_integrals(self.blf, self.root.fem.blf)
+        self.add_sum_of_integrals(self.blf, self.root.fem.blf, 'explicit bilinear form')
 
     def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
 
