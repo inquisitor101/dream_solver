@@ -51,8 +51,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                 logger.debug(f"  Adding {term} term for space {space}!")
 
-                if self.root.optimizations.compile.realcompile:
-                    blf += cf.Compile(**compile)
+                if self.compile['realcompile']:
+                    blf += cf.Compile(**self.compile)
                 else:
                     blf += cf
         logger.debug("Done.")
@@ -77,8 +77,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                 logger.debug(f"  Adding {term} term for space {space}!")
 
-                if self.root.optimizations.compile.realcompile:
-                    blf += cf.Compile(compile.realcompile, compile.wait, compile.keep_files)
+                if self.compile['realcompile']:
+                    blf += cf.Compile(**self.compile)
                 else:
                     blf += cf
         logger.debug("Done.")
@@ -105,8 +105,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                 logger.debug(f"  Adding {term} term for space {space}!")
 
-                if self.root.optimizations.compile.realcompile:
-                    blf += cf.Compile(**compile)
+                if self.compile['realcompile']:
+                    blf += cf.Compile(**self.compile)
                 else:
                     blf += cf
         logger.debug("Done.")
@@ -131,8 +131,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                 logger.debug(f"  Adding {term} term for space {space}!")
 
-                if self.root.optimizations.compile.realcompile:
-                    lf += cf.Compile(compile.realcompile, compile.wait, compile.keep_files)
+                if self.compile['realcompile']:
+                    lf += cf.Compile(**self.compile)
                 else:
                     lf += cf
         logger.debug("Done.")
@@ -157,8 +157,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                 logger.debug(f"  Adding {term} term for space {space}!")
 
-                if self.root.optimizations.compile.realcompile:
-                    lf += cf.Compile(compile.realcompile, compile.wait, compile.keep_files)
+                if self.compile['realcompile']:
+                    lf += cf.Compile(**self.compile)
                 else:
                     lf += cf
         logger.debug("Done.")
@@ -167,7 +167,6 @@ class IMEXRKSchemes(TimeSchemes):
     def assemble(self) -> None:
 
         condense = self.root.fem.static_condensation
-        compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
         self.blfs = ngs.BilinearForm(self.root.fem.fes)
@@ -185,10 +184,7 @@ class IMEXRKSchemes(TimeSchemes):
             raise ValueError("Could not find a mass matrix definition in the bilinear form.")
 
         # Precompute the weighted mass matrix, with weights: 1/(dt*aii).
-        if compile.realcompile:
-            self.mass += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            self.mass += self.root.fem.blf['U']['mass']
+        self.mass += self.root.fem.blf['U']['mass']
 
         # Assemble the mass matrix once.
         self.mass.Assemble()

@@ -107,13 +107,34 @@ class Scheme(Configuration, is_interface=True):
 
     root: SolverConfiguration
 
+    def __init__(self, mesh, root = None, **default):
+
+        self._compile = {'realcompile': False, 'wait': False, 'keep_files': False}
+
+        DEFAULT = {
+            "compile": False,
+        }
+        DEFAULT.update(default)
+
+        super().__init__(mesh, root, **DEFAULT)
+
+    @dream_configuration
+    def compile(self) -> dict[str, bool]:
+        return self._compile
+
+    @compile.setter
+    def compile(self, compile: bool):
+
+        if bool(compile):
+            self._compile['realcompile'] = True
+        else:
+            self._compile['realcompile'] = False
+
     def add_sum_of_integrals(self,
                              form: ngs.LinearForm | ngs.BilinearForm,
                              integrals: Integrals,
-                             *pass_terms: tuple[str, ...],
+                             *pass_terms: str,
                              fespace: str = None) -> None:
-
-        compile = self.root.optimizations.compile
 
         # Determine which spaces to iterate over.
         spaces = [fespace] if fespace else integrals.keys()
@@ -130,8 +151,8 @@ class Scheme(Configuration, is_interface=True):
 
                 logger.debug(f"Adding {term} term for space {space}!")
 
-                if compile.realcompile:
-                    form += cf.Compile(compile.realcompile, compile.wait, compile.keep_files)
+                if self.compile['realcompile']:
+                    form += cf.Compile(**self.compile)
                 else:
                     form += cf
 

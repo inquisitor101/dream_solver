@@ -29,7 +29,6 @@ class ImplicitSchemes(TimeSchemes):
     def assemble(self) -> None:
 
         condense = self.root.fem.static_condensation
-        compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
      
@@ -60,11 +59,7 @@ class ImplicitSchemes(TimeSchemes):
 
         # Precompute the (scaled, with c/dt, where c is some constant) mass matrix.
         self.mass = ngs.BilinearForm(self.root.fem.fes, symmetric=True)
-
-        if self.root.optimizations.compile.realcompile:
-            self.mass += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            self.mass += self.root.fem.blf['U']['mass']
+        self.mass += self.root.fem.blf['U']['mass']
         
         # And assemble it.
         self.mass.Assemble()
@@ -200,7 +195,6 @@ class DIRKSchemes(TimeSchemes):
     def assemble(self) -> None:
 
         condense = self.root.fem.static_condensation
-        compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
         self.blfs = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -211,10 +205,7 @@ class DIRKSchemes(TimeSchemes):
             raise ValueError("Could not find a mass matrix definition in the bilinear form.")
 
         # Precompute the weighted mass matrix, with weights: 1/(dt*aii).
-        if compile.realcompile:
-            self.mass += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            self.mass += self.root.fem.blf['U']['mass']
+        self.mass += self.root.fem.blf['U']['mass']
 
         # Assemble the mass matrix once.
         self.mass.Assemble()

@@ -69,66 +69,17 @@ class BonusIntegrationOrder(Configuration):
         self._bbbnd = int(bbbnd)
 
 
-class Compile(Configuration):
-
-    def __init__(self, mesh, root=None, **default):
-
-        DEFAULT = {
-            "realcompile": False,
-            "wait": False,
-            "keep_files": False
-        }
-
-        DEFAULT.update(default)
-        super().__init__(mesh, root, **DEFAULT)
-
-    @dream_configuration
-    def realcompile(self) -> bool:
-        return self._realcompile
-
-    @realcompile.setter
-    def realcompile(self, flag: bool):
-        self._realcompile = bool(flag)
-
-    @dream_configuration
-    def wait(self) -> bool:
-        return self._wait
-
-    @wait.setter
-    def wait(self, flag: bool):
-        self._wait = bool(flag)
-
-    @dream_configuration
-    def keep_files(self) -> bool:
-        return self._keep_files
-
-    @keep_files.setter
-    def keep_files(self, flag: bool):
-        self._keep_files = bool(flag)
-
-
 class Optimizations(Configuration):
 
     def __init__(self, mesh, root=None, **default):
 
         DEFAULT = {
-            "compile": Compile(mesh, root),
             "bonus_int_order": BonusIntegrationOrder(mesh, root)
 
         }
         DEFAULT.update(default)
 
         super().__init__(mesh, root, **DEFAULT)
-
-    @dream_configuration
-    def compile(self) -> Compile:
-        return self._compile
-
-    @compile.setter
-    def compile(self, compile: Compile):
-        if not isinstance(compile, Compile):
-            raise TypeError("Compile must be of type Compile!")
-        self._compile = compile
 
     @dream_configuration
     def bonus_int_order(self) -> BonusIntegrationOrder:

@@ -15,7 +15,6 @@ class IMEXRKSchemes(TimeSchemes):
     def assemble(self) -> None:
 
         condense = self.root.fem.static_condensation
-        compile = self.root.optimizations.compile
 
         # NOTE, we assume that self.lf is not needed here (for efficiency).
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -30,10 +29,7 @@ class IMEXRKSchemes(TimeSchemes):
             raise ValueError("Could not find a mass matrix definition in the bilinear form.")
 
         # Precompute the weighted mass matrix, with weights: 1/(dt*aii).
-        if compile.realcompile:
-            self.mass += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            self.mass += self.root.fem.blf['U']['mass']
+        self.mass += self.root.fem.blf['U']['mass']
 
         # Assemble the mass matrix once.
         self.mass.Assemble()
@@ -76,8 +72,8 @@ class IMEXRKSchemes(TimeSchemes):
 
                     logger.debug(f"Adding {term} term for space {space}!")
 
-                    if compile.realcompile:
-                        form += cf.Compile(**compile)
+                    if self.compile['realcompile']:
+                        form += cf.Compile(**self.compile)
                     else:
                         form += cf
 

@@ -63,6 +63,7 @@ cfg.is_inviscid = True
 cfg.riemann_solver = "lax_friedrich"
 cfg.fem = "dg" # NOTE, by default, DG is used.
 cfg.fem.order = 0
+cfg.fem.static_condensation = False  # NOTE, by default, condensation is turned off.
 
 
 cfg.time = "transient"
@@ -71,8 +72,6 @@ cfg.time.timer.interval = (0.0, 12.0)
 cfg.time.timer.step = 0.01
 
 # cfg.linear_solver = "pardiso"
-cfg.fem.static_condensation = False  # NOTE, by default, condensation is turned off.
-cfg.optimizations.compile.realcompile = False
 
 U0 = transportfields()
 U0.phi = get_analytic_solution(cfg.time.timer.interval[0], cfg.convection_velocity[0])

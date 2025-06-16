@@ -20,18 +20,13 @@ class ExplicitSchemes(TimeSchemes):
         if "mass" not in self.root.fem.blf['U']:
             raise ValueError("Could not find a mass matrix definition in the bilinear form.")
 
-        compile = self.root.optimizations.compile
-
         # NOTE, we assume that self.lf is not needed here (for efficiency).
         self.blf = ngs.BilinearForm(self.root.fem.fes)
         self.rhs = self.root.fem.gfu.vec.CreateVector()
         self.minv = ngs.BilinearForm(self.root.fem.fes, symmetric=True)
 
         # Step 1: precompute and store the inverse mass matrix. Note, this is scaled by dt.
-        if compile.realcompile:
-            self.minv += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            self.minv += self.root.fem.blf['U']['mass']
+        self.minv += self.root.fem.blf['U']['mass']
 
         # Invert the mass matrix.
         self.minv.Assemble()

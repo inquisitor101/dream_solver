@@ -95,9 +95,6 @@ cfg.fem.scheme = "implicit_euler"
 cfg.time.timer.interval = (ngs.pi/2, 5*ngs.pi/2)
 cfg.time.timer.step = 0.005
 
-# cfg.linear_solver = "pardiso"
-cfg.optimizations.compile.realcompile = False
-
 U0 = transportfields()
 U0.phi = get_analytic_solution(cfg.time.timer.interval[0], cfg.diffusion_coefficient)
 

@@ -97,7 +97,6 @@ cfg.nonlinear_solver.convergence_criterion = 1e-8
 
 cfg.optimizations.bonus_int_order.bnd = cfg.fem.order
 cfg.optimizations.bonus_int_order.vol = cfg.fem.order
-cfg.optimizations.compile.realcompile = False
 
 mesh.Curve(cfg.fem.order)
 

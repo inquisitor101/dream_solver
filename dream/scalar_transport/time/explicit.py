@@ -15,8 +15,6 @@ class ExplicitSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        compile = self.root.optimizations.compile
-
         # Check that a mass matrix is indeed defined in the bilinear form dictionary.
         if "mass" not in self.root.fem.blf['U']:
             raise ValueError("Could not find a mass matrix definition in the bilinear form.")
@@ -27,10 +25,7 @@ class ExplicitSchemes(TimeSchemes):
         
         # Step 1: precompute the mass matrix. Note, this is scaled by dt.
         mass = ngs.BilinearForm(self.root.fem.fes, symmetric=True)
-        if compile.realcompile:
-            mass += self.root.fem.blf['U']['mass'].Compile(**compile)
-        else:
-            mass += self.root.fem.blf['U']['mass']
+        mass += self.root.fem.blf['U']['mass']
 
         # Assemble the mass matrix.
         mass.Assemble()
