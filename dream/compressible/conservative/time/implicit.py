@@ -14,7 +14,7 @@ class ImplicitSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        condense = self.root.optimizations.static_condensation
+        condense = self.root.fem.static_condensation
         compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -166,7 +166,7 @@ class DIRKSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        condense = self.root.optimizations.static_condensation
+        condense = self.root.fem.static_condensation
         compile = self.root.optimizations.compile
 
         # NOTE, we assume that self.lf is not needed here (for efficiency).

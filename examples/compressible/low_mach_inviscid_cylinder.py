@@ -39,6 +39,7 @@ cfg.time.max_time_step = 10
 cfg.fem = 'conservative'
 cfg.fem.order = 5
 cfg.fem.scheme = "implicit_euler"
+cfg.fem.static_condensation = True
 
 cfg.scaling = "acoustic"
 cfg.riemann_solver = "hllem"
@@ -50,7 +51,6 @@ cfg.nonlinear_solver.method = "newton"
 cfg.nonlinear_solver.max_iterations = 300
 cfg.nonlinear_solver.convergence_criterion = 1e-12
 
-cfg.optimizations.static_condensation = True
 
 # ------- Curve Mesh ------- #
 mesh.Curve(cfg.fem.order)

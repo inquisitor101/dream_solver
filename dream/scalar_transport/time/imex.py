@@ -166,7 +166,7 @@ class IMEXRKSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        condense = self.root.optimizations.static_condensation
+        condense = self.root.fem.static_condensation
         compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -366,7 +366,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
 
 
     def solve_stage(self, t: float, U: ngs.GridFunction, rhs: ngs.BaseVector):
-        if self.root.optimizations.static_condensation is True:
+        if self.root.fem.static_condensation is True:
             rhs.data += self.blf.harmonic_extension_trans * rhs
             U.vec.data = self.binv * rhs
             U.vec.data += self.blf.harmonic_extension * U.vec

@@ -28,7 +28,7 @@ class ImplicitSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        condense = self.root.optimizations.static_condensation
+        condense = self.root.fem.static_condensation
         compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -106,7 +106,7 @@ class ImplicitEuler(ImplicitSchemes):
             self.rhs.data += self.lf.vec
 
         # Then, solve, depending on whether we static condense or not.
-        if self.root.optimizations.static_condensation is True:
+        if self.root.fem.static_condensation is True:
             self.rhs.data += self.blf.harmonic_extension_trans * self.rhs
             self.root.fem.gfu.vec.data = self.binv * self.rhs
             self.root.fem.gfu.vec.data += self.blf.harmonic_extension * self.root.fem.gfu.vec
@@ -153,7 +153,7 @@ class BDF2(ImplicitSchemes):
             self.rhs.data += self.lf.vec
 
         # Then, solve, depending on whether we static condense or not.
-        if self.root.optimizations.static_condensation is True:
+        if self.root.fem.static_condensation is True:
             self.rhs.data += self.blf.harmonic_extension_trans * self.rhs
             self.root.fem.gfu.vec.data = self.binv * self.rhs
             self.root.fem.gfu.vec.data += self.blf.harmonic_extension * self.root.fem.gfu.vec
@@ -199,7 +199,7 @@ class DIRKSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
-        condense = self.root.optimizations.static_condensation
+        condense = self.root.fem.static_condensation
         compile = self.root.optimizations.compile
 
         self.blf = ngs.BilinearForm(self.root.fem.fes, condense=condense)
@@ -256,7 +256,7 @@ class DIRKSchemes(TimeSchemes):
             rhs.data -= self.lf.vec 
 
     def solve_stage(self, t: float, U: ngs.GridFunction, rhs: ngs.BaseVector):
-        if self.root.optimizations.static_condensation is True:
+        if self.root.fem.static_condensation is True:
             rhs.data += self.blf.harmonic_extension_trans * rhs
             U.vec.data = self.binv * rhs
             U.vec.data += self.blf.harmonic_extension * U.vec

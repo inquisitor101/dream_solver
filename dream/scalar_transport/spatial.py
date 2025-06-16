@@ -434,7 +434,7 @@ class DG(ScalarTransportFiniteElementMethod):
         fes['U'] = U
         
         # Issue an error, if static condensation is turned on.
-        if self.root.optimizations.static_condensation is True:
+        if self.root.fem.static_condensation is True:
             raise ValueError("Cannot have static condensation with a standard DG implementation!")
     
     def add_convection_form(self, blf: Integrals, lf: Integrals):

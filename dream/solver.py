@@ -113,7 +113,6 @@ class Optimizations(Configuration):
 
         DEFAULT = {
             "compile": Compile(mesh, root),
-            "static_condensation": False,
             "bonus_int_order": BonusIntegrationOrder(mesh, root)
 
         }
@@ -130,14 +129,6 @@ class Optimizations(Configuration):
         if not isinstance(compile, Compile):
             raise TypeError("Compile must be of type Compile!")
         self._compile = compile
-
-    @dream_configuration
-    def static_condensation(self) -> bool:
-        return self._static_condensation
-
-    @static_condensation.setter
-    def static_condensation(self, static_condensation: bool):
-        self._static_condensation = bool(static_condensation)
 
     @dream_configuration
     def bonus_int_order(self) -> BonusIntegrationOrder:
@@ -392,6 +383,7 @@ class FiniteElementMethod(Configuration, is_interface=True):
     def __init__(self, mesh, root=None, **default):
         DEFAULT = {
             "order": 2,
+            "static_condensation": False,
         }
 
         DEFAULT.update(default)
@@ -405,6 +397,14 @@ class FiniteElementMethod(Configuration, is_interface=True):
     @order.setter
     def order(self, order: int):
         self._order = int(order)
+
+    @dream_configuration
+    def static_condensation(self) -> bool:
+        return self._static_condensation
+
+    @static_condensation.setter
+    def static_condensation(self, static_condensation: bool):
+        self._static_condensation = bool(static_condensation)
 
     @property
     def scheme(self) -> Scheme | TimeSchemes:

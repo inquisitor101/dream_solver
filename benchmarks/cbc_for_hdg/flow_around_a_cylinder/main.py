@@ -85,6 +85,7 @@ cfg.scaling = 'aerodynamic'
 cfg.fem = 'conservative'
 cfg.fem.order = 4
 cfg.fem.method = 'hdg'
+cfg.fem.static_condensation = True
 cfg.fem.mixed_method = 'strain_heat'
 cfg.fem.scheme = 'bdf2'
 
@@ -96,7 +97,6 @@ cfg.nonlinear_solver.convergence_criterion = 1e-8
 
 cfg.optimizations.bonus_int_order.bnd = cfg.fem.order
 cfg.optimizations.bonus_int_order.vol = cfg.fem.order
-cfg.optimizations.static_condensation = True
 cfg.optimizations.compile.realcompile = False
 
 mesh.Curve(cfg.fem.order)
