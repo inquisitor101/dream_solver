@@ -5,91 +5,12 @@ import typing
 
 from math import isnan
 
-from .mesh import is_mesh_periodic, Periodic, Initial, BoundaryConditions, DomainConditions
+from .mesh import is_mesh_periodic, Periodic, BoundaryConditions, DomainConditions
 from .config import Configuration, dream_configuration, ngsdict, Integrals
 from .time import StationaryRoutine, TransientRoutine, PseudoTimeSteppingRoutine, TimeRoutine, Scheme, TimeSchemes
 from .io import IOConfiguration
 
 logger = logging.getLogger(__name__)
-
-
-class BonusIntegrationOrder(Configuration):
-
-    def __init__(self, mesh, root=None, **default):
-
-        DEFAULT = {
-            "vol": 0,
-            "bnd": 0,
-            "bbnd": 0,
-            "bbbnd": 0
-        }
-
-        DEFAULT.update(default)
-
-        super().__init__(mesh, root, **DEFAULT)
-
-    @dream_configuration
-    def vol(self) -> int:
-        return self._vol
-
-    @vol.setter
-    def vol(self, vol: int):
-        if vol < 0:
-            raise ValueError("Integration order must be non-negative!")
-        self._vol = int(vol)
-
-    @dream_configuration
-    def bnd(self) -> int:
-        return self._bnd
-
-    @bnd.setter
-    def bnd(self, bnd: int):
-        if bnd < 0:
-            raise ValueError("Integration order must be non-negative!")
-        self._bnd = int(bnd)
-
-    @dream_configuration
-    def bbnd(self) -> int:
-        return self._bbnd
-
-    @bbnd.setter
-    def bbnd(self, bbnd: int):
-        if bbnd < 0:
-            raise ValueError("Integration order must be non-negative!")
-        self._bbnd = int(bbnd)
-
-    @dream_configuration
-    def bbbnd(self) -> int:
-        return self._bbbnd
-
-    @bbbnd.setter
-    def bbbnd(self, bbbnd: int):
-        if bbbnd < 0:
-            raise ValueError("Integration order must be non-negative!")
-        self._bbbnd = int(bbbnd)
-
-
-class Optimizations(Configuration):
-
-    def __init__(self, mesh, root=None, **default):
-
-        DEFAULT = {
-            "bonus_int_order": BonusIntegrationOrder(mesh, root)
-
-        }
-        DEFAULT.update(default)
-
-        super().__init__(mesh, root, **DEFAULT)
-
-    @dream_configuration
-    def bonus_int_order(self) -> BonusIntegrationOrder:
-        return self._bonus_int_order
-
-    @bonus_int_order.setter
-    def bonus_int_order(self, bonus_int_order: BonusIntegrationOrder):
-        if not isinstance(bonus_int_order, BonusIntegrationOrder):
-            raise TypeError("BonusIntegrationOrder must be of type BonusIntegrationOrder!")
-        self._bonus_int_order = bonus_int_order
 
 
 class Solver(Configuration, is_interface=True):
@@ -332,9 +253,13 @@ class FiniteElementMethod(Configuration, is_interface=True):
     root: SolverConfiguration
 
     def __init__(self, mesh, root=None, **default):
+
+        self._bonus_int_order = {}
+
         DEFAULT = {
             "order": 2,
             "static_condensation": False,
+            'bonus_int_order': 0,
         }
 
         DEFAULT.update(default)
@@ -356,6 +281,25 @@ class FiniteElementMethod(Configuration, is_interface=True):
     @static_condensation.setter
     def static_condensation(self, static_condensation: bool):
         self._static_condensation = bool(static_condensation)
+
+    @dream_configuration
+    def bonus_int_order(self) -> dict[str, dict[str, int]]:
+        return self._bonus_int_order
+
+    @bonus_int_order.setter
+    def bonus_int_order(self, order: int) -> None:
+
+        vorb = ('vol', 'bnd')
+
+        if isinstance(order, int):
+            for term in self._bonus_int_order:
+                self._bonus_int_order[term].update(dict.fromkeys(vorb, order))
+
+        elif isinstance(order, dict):
+            self._bonus_int_order.update(order)
+
+        elif isinstance(order, (tuple, list)):
+            self._bonus_int_order = {term: dict.fromkeys(vorb, 0) for term in order}
 
     @property
     def scheme(self) -> Scheme | TimeSchemes:
@@ -450,7 +394,6 @@ class SolverConfiguration(Configuration, is_interface=True):
         DEFAULT = {
             "linear_solver": DefaultLinearSolver(mesh, self),
             "nonlinear_solver": DefaultNonlinearSolver(mesh, self),
-            "optimizations": Optimizations(mesh, self),
             "io": IOConfiguration(mesh, self),
             "info": {},
         }
@@ -491,16 +434,6 @@ class SolverConfiguration(Configuration, is_interface=True):
     def nonlinear_solver(self, solver: str | NonlinearSolver):
         OPTIONS = [DefaultNonlinearSolver, UmfpackNonlinearSolver, PardisoNonlinearSolver]
         self._nonlinear_solver = self._get_configuration_option(solver, OPTIONS, NonlinearSolver)
-
-    @dream_configuration
-    def optimizations(self) -> Optimizations:
-        return self._optimizations
-
-    @optimizations.setter
-    def optimizations(self, optimizations: Optimizations):
-        if not isinstance(optimizations, Optimizations):
-            raise TypeError("Optimizations must be of type Optimizations!")
-        self._optimizations = optimizations
 
     @dream_configuration
     def io(self) -> IOConfiguration:

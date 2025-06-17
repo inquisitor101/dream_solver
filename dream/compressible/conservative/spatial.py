@@ -125,7 +125,7 @@ class StrainHeat(MixedMethod):
         if self.mesh.dim == 3:
             raise NotImplementedError("StrainHeat method is not implemented for domain dimension 3!")
 
-        bonus = self.root.optimizations.bonus_int_order
+        bonus = self.fem.bonus_int_order['diffusion']
 
         U, _ = self.fem.method.TnT['U']
         Uhat, _ = self.fem.method.TnT['Uhat']
@@ -143,15 +143,15 @@ class StrainHeat(MixedMethod):
         div_dev_zeta -= 1/3 * ngs.CF((gradient_P[0, 0] + gradient_P[2, 0], gradient_P[0, 1] + gradient_P[2, 1]))
 
         blf['Q']['mixed'] = ngs.InnerProduct(Q.eps, P.eps) * ngs.dx
-        blf['Q']['mixed'] += ngs.InnerProduct(U.u, div_dev_zeta) * ngs.dx(bonus_intorder=bonus.vol)
+        blf['Q']['mixed'] += ngs.InnerProduct(U.u, div_dev_zeta) * ngs.dx(bonus_intorder=bonus['vol'])
         blf['Q']['mixed'] -= ngs.InnerProduct(Uhat.u, dev_zeta*self.mesh.normal) * \
-            ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+            ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
         div_xi = gradient_P[3, 0] + gradient_P[4, 1]
         blf['Q']['mixed'] += ngs.InnerProduct(Q.grad_T, P.grad_T) * ngs.dx
-        blf['Q']['mixed'] += ngs.InnerProduct(U.T, div_xi) * ngs.dx(bonus_intorder=bonus.vol)
+        blf['Q']['mixed'] += ngs.InnerProduct(U.T, div_xi) * ngs.dx(bonus_intorder=bonus['vol'])
         blf['Q']['mixed'] -= ngs.InnerProduct(Uhat.T*self.mesh.normal, P.grad_T) * \
-            ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+            ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
     def get_cbc_viscous_terms(self, bc: CBC):
 
@@ -454,7 +454,8 @@ class DG(ConservativeMethod):
                             lf:  dict[str, ngs.comp.SumOfIntegrals]):
 
         # Extract the bonus integration order, if specified.
-        bonus = self.root.optimizations.bonus_int_order
+        bonus = self.root.fem.bonus_int_order['convection']
+
 
         # Obtain the relevant test and trial functions. Notice, the solution "U"
         # is assumed to be an unknown in the bilinear form, despite being explicit
@@ -477,8 +478,8 @@ class DG(ConservativeMethod):
         Fn = self.root.riemann_solver.get_convective_numerical_flux_dg(Ui, Uj, self.mesh.normal)
 
         # Assemble the explicit bilinear form, keeping in mind this is placed on the RHS.
-        blf['U']['convection'] = bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus.vol)
-        blf['U']['convection'] += -mask*bla.inner(Fn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+        blf['U']['convection'] = bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus['vol'])
+        blf['U']['convection'] += -mask*bla.inner(Fn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
     def add_boundary_conditions(self,
                                 blf: dict[str, ngs.comp.SumOfIntegrals],
@@ -583,8 +584,8 @@ class HDG(ConservativeMethod):
 
     def add_convection_form(self, blf: Integrals, lf: Integrals):
 
-        bonus = self.root.optimizations.bonus_int_order
-        dX = ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['convection']
+        dX = ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
         mask = self.get_domain_boundary_mask()
 
@@ -597,7 +598,7 @@ class HDG(ConservativeMethod):
         F = self.root.get_convective_flux(U)
         Fn = self.get_convective_numerical_flux(U, Uhat, self.mesh.normal)
 
-        blf['U']['convection'] = -bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus.vol)
+        blf['U']['convection'] = -bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus['vol'])
         blf['U']['convection'] += bla.inner(Fn, V) * dX
 
         if self.root.dynamic_viscosity.is_inviscid:
@@ -608,8 +609,8 @@ class HDG(ConservativeMethod):
 
     def add_diffusion_form(self, blf: Integrals, lf: Integrals):
 
-        bonus = self.root.optimizations.bonus_int_order
-        dX = ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['diffusion']
+        dX = ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
         mask = self.get_domain_boundary_mask()
 
@@ -624,7 +625,7 @@ class HDG(ConservativeMethod):
         G = self.root.get_diffusive_flux(U, Q)
         Gn = self.get_diffusive_numerical_flux(U, Uhat, Q, self.mesh.normal)
 
-        blf['U']['diffusion'] = ngs.InnerProduct(G, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus.vol)
+        blf['U']['diffusion'] = ngs.InnerProduct(G, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus['vol'])
         blf['U']['diffusion'] -= ngs.InnerProduct(Gn, V) * dX
         blf['Uhat']['diffusion'] = mask * ngs.InnerProduct(Gn, Vhat) * dX
 
@@ -697,8 +698,8 @@ class HDG(ConservativeMethod):
             \int_{\Gamma} \left[\widehat{\vec{U}}_h - \frac{\vec{U}_h + \vec{U}_\infty}{2} - \widehat{\mat{Q}}_n \frac{\vec{U}_h - \vec{U}_\infty}{2} \right] \cdot \widehat{\vec{V}}_h  = \vec{0}.
         """
 
-        bonus = self.root.optimizations.bonus_int_order
-        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['convection']
+        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus['bnd'])
 
         U, _ = self.TnT['U']
         Uhat, Vhat = self.TnT['Uhat']
@@ -721,8 +722,8 @@ class HDG(ConservativeMethod):
 
     def add_outflow_formulation(self, blf: Integrals, lf: Integrals, bc: Outflow, bnd: str):
 
-        bonus = self.root.optimizations.bonus_int_order
-        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['convection']
+        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus['bnd'])
 
         U, _ = self.TnT['U']
         Uhat, Vhat = self.TnT['Uhat']
@@ -736,9 +737,9 @@ class HDG(ConservativeMethod):
 
     def add_cbc_formulation(self, blf: Integrals, lf: Integrals, bc: CBC, bnd: str):
 
-        bonus = self.root.optimizations.bonus_int_order
+        bonus = self.root.fem.bonus_int_order['convection']
         label = f"{bc.name}_{bnd}"
-        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus.bnd)
+        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus['bnd'])
         scheme = self.root.fem.scheme
 
         U, _ = self.TnT['U']
@@ -807,8 +808,8 @@ class HDG(ConservativeMethod):
 
     def add_isothermal_wall_formulation(self, blf: Integrals, lf: Integrals, bc: IsothermalWall, bnd: str):
 
-        bonus = self.root.optimizations.bonus_int_order
-        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['convection']
+        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus['bnd'])
 
         U, _ = self.TnT['U']
         Uhat, Vhat = self.TnT['Uhat']
@@ -825,8 +826,8 @@ class HDG(ConservativeMethod):
         if not isinstance(self.mixed_method, StrainHeat):
             raise NotImplementedError(f"Adiabatic wall not implemented for {self.mixed_method}")
 
-        bonus = self.root.optimizations.bonus_int_order
-        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus.bnd)
+        bonus = self.root.fem.bonus_int_order['convection']
+        dS = ngs.ds(skeleton=True, definedon=self.mesh.Boundaries(bnd), bonus_intorder=bonus['bnd'])
 
         n = self.mesh.normal
 
@@ -989,7 +990,8 @@ class DG_HDG(ConservativeMethod):
                             lf:  dict[str, ngs.comp.SumOfIntegrals]):
 
         # Extract the bonus integration order, if specified.
-        bonus = self.root.optimizations.bonus_int_order
+        bonus = self.root.fem.bonus_int_order['convection']
+
 
         # Obtain the relevant test and trial functions. Notice, the solution "U"
         # is assumed to be an unknown in the bilinear form, despite being explicit 
@@ -1012,13 +1014,13 @@ class DG_HDG(ConservativeMethod):
         Fn = self.root.riemann_solver.get_convective_numerical_flux_dg(Ui, Uj, self.mesh.normal)
 
         # Assemble the explicit bilinear form, keeping in mind this is also placed on the LHS.
-        blf['U']['convection'] = -bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus.vol)
-        blf['U']['convection'] += mask*bla.inner(Fn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+        blf['U']['convection'] = -bla.inner(F, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus['vol'])
+        blf['U']['convection'] += mask*bla.inner(Fn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
     # In this (IMEX-)specialized class, the elliptic terms are handled via an HDG.
     def add_diffusion_form(self, blf: Integrals, lf: Integrals):
 
-        bonus = self.root.optimizations.bonus_int_order
+        bonus = self.root.fem.bonus_int_order['diffusion']
 
         mask = self.get_domain_boundary_mask()
 
@@ -1033,10 +1035,10 @@ class DG_HDG(ConservativeMethod):
         G = self.root.get_diffusive_flux(U, Q)
         Gn = self.get_diffusive_numerical_flux(U, Uhat, Q, self.mesh.normal)
 
-        blf['U']['diffusion'] = ngs.InnerProduct(G, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus.vol)
-        blf['U']['diffusion'] -= ngs.InnerProduct(Gn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+        blf['U']['diffusion'] = ngs.InnerProduct(G, ngs.grad(V)) * ngs.dx(bonus_intorder=bonus['vol'])
+        blf['U']['diffusion'] -= ngs.InnerProduct(Gn, V) * ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
         blf['Uhat']['diffusion'] = mask * ngs.InnerProduct(Gn,
-                                                           Vhat) * ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+                                                           Vhat) * ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
         # NOTE, to obtain a well-posed formulation, we require a value for rho_hat, since we need it on the facets.
         # To this end, we estimate its value as the average of the density on the surface (w.r.t. neighboring elements).
@@ -1048,7 +1050,7 @@ class DG_HDG(ConservativeMethod):
         eq = ngs.CF((rho_avg, 0, 0, 0))
 
         blf['Uhat']['test'] = mask * ngs.InnerProduct(eq,
-                                                      Vhat) * ngs.dx(element_boundary=True, bonus_intorder=bonus.bnd)
+                                                      Vhat) * ngs.dx(element_boundary=True, bonus_intorder=bonus['bnd'])
 
     def get_diffusive_numerical_flux(
             self, U: flowfields, Uhat: flowfields, Q: flowfields, unit_vector: ngs.CF):

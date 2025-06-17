@@ -88,15 +88,13 @@ cfg.fem.method = 'hdg'
 cfg.fem.static_condensation = True
 cfg.fem.mixed_method = 'strain_heat'
 cfg.fem.scheme = 'bdf2'
+cfg.fem.bonus_int_order = cfg.fem.order
 
 cfg.nonlinear_solver = 'pardiso'
 cfg.nonlinear_solver.method = 'newton'
 cfg.nonlinear_solver.method.damping_factor = 1
 cfg.nonlinear_solver.max_iterations = 5
 cfg.nonlinear_solver.convergence_criterion = 1e-8
-
-cfg.optimizations.bonus_int_order.bnd = cfg.fem.order
-cfg.optimizations.bonus_int_order.vol = cfg.fem.order
 
 mesh.Curve(cfg.fem.order)
 

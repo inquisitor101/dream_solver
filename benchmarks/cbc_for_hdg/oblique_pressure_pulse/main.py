@@ -46,6 +46,7 @@ cfg.fem.method = "hdg"
 cfg.fem.static_condensation = True
 cfg.fem.mixed_method = "inactive"
 cfg.fem.scheme = "bdf2"
+cfg.fem.bonus_int_order = cfg.fem.order
 
 cfg.mach_number = 0.0
 cfg.equation_of_state = "ideal"
@@ -59,9 +60,6 @@ cfg.nonlinear_solver.method = "newton"
 cfg.nonlinear_solver.method.damping_factor = 1
 cfg.nonlinear_solver.max_iterations = 5
 cfg.nonlinear_solver.convergence_criterion = 1e-8
-
-cfg.optimizations.bonus_int_order.bnd = cfg.fem.order
-cfg.optimizations.bonus_int_order.vol = cfg.fem.order
 
 # Setup boundary and initial fields
 Uinf = cfg.get_farfield_fields((1, 0))

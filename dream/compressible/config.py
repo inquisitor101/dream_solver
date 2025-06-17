@@ -18,6 +18,16 @@ from dream.mesh import (Condition,
 
 class CompressibleFiniteElementMethod(FiniteElementMethod):
 
+    def __init__(self, mesh, root=None, **default):
+
+        DEFAULT = {
+            'bonus_int_order': ('convection', 'diffusion'),
+        }
+
+        DEFAULT.update(default)
+
+        super().__init__(mesh, root, **DEFAULT)
+
     def set_boundary_conditions(self) -> None:
         """ Boundary conditions for compressible flows are set weakly. Therefore we do nothing here."""
         pass
@@ -330,7 +340,7 @@ class Symmetry(Condition):
 
 class IsothermalWall(Condition):
     """ Isothermal wall condition for compressible flow.
-    
+
     The isothermal wall condition sets the temperature :math:`T_w` and no-slip conditions at the wall boundaries.
     """
 
@@ -363,7 +373,7 @@ class IsothermalWall(Condition):
 
 class AdiabaticWall(Condition):
     r""" Adiabatic wall condition for compressible flow.
-    
+
     The adiabatic wall condition sets zero heat flux :math:`\vec{q} \cdot \vec{n}$` and no-slip conditions at the wall boundaries.
     """
 

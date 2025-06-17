@@ -58,15 +58,13 @@ cfg.fem.static_condensation = True
 cfg.fem.method.scheme = "bdf2"
 cfg.fem.order = 4
 cfg.fem.mixed_method = "inactive"
+cfg.fem.bonus_int_order = 4
 
 # cfg.nonlinear_solver = "pardiso"
 cfg.nonlinear_solver.method = "newton"
 cfg.nonlinear_solver.method.damping_factor = 1
 cfg.nonlinear_solver.max_iterations = 10
 cfg.nonlinear_solver.convergence_criterion = 1e-10
-
-cfg.optimizations.bonus_int_order.vol = 4
-cfg.optimizations.bonus_int_order.bnd = 4
 
 
 

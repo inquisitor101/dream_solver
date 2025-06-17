@@ -105,6 +105,36 @@ def cfg():
     return DummySolverConfiguration(mesh=mesh)
 
 
+def test_fem_bonus_int_order_default_setter():
+
+    fem = FiniteElementMethod(None)
+
+    assert fem.bonus_int_order == {}
+
+
+def test_fem_bonus_int_order_sequence_setter():
+
+    fem = FiniteElementMethod(None, bonus_int_order=('convection', 'diffusion'))
+
+    assert fem.bonus_int_order == {'convection': {'vol': 0, 'bnd': 0}, 'diffusion': {'vol': 0, 'bnd': 0}, }
+
+
+def test_fem_bonus_int_order_set_all():
+
+    fem = FiniteElementMethod(None, bonus_int_order=('convection', 'diffusion'))
+    fem.bonus_int_order = 1
+
+    assert fem.bonus_int_order == {'convection': {'vol': 1, 'bnd': 1}, 'diffusion': {'vol': 1, 'bnd': 1}, }
+
+
+def test_fem_bonus_int_order_set_single():
+
+    fem = FiniteElementMethod(None, bonus_int_order=('convection', 'diffusion'))
+    fem.bonus_int_order['convection']['vol'] = 1
+
+    assert fem.bonus_int_order == {'convection': {'vol': 1, 'bnd': 0}, 'diffusion': {'vol': 0, 'bnd': 0}, }
+
+
 def test_initialize_finite_element_spaces_dictionary(cfg: DummySolverConfiguration):
     cfg.fem.initialize_finite_element_spaces()
 
