@@ -90,11 +90,11 @@ cfg.fem.mixed_method = 'strain_heat'
 cfg.fem.scheme = 'bdf2'
 cfg.fem.bonus_int_order = cfg.fem.order
 
-cfg.nonlinear_solver = 'pardiso'
-cfg.nonlinear_solver.method = 'newton'
-cfg.nonlinear_solver.method.damping_factor = 1
-cfg.nonlinear_solver.max_iterations = 5
-cfg.nonlinear_solver.convergence_criterion = 1e-8
+cfg.fem.solver = 'direct'
+cfg.fem.solver.method = 'newton'
+cfg.fem.solver.method.damping_factor = 1
+cfg.fem.solver.method.max_iterations = 5
+cfg.fem.solver.method.convergence_criterion = 1e-8
 
 mesh.Curve(cfg.fem.order)
 

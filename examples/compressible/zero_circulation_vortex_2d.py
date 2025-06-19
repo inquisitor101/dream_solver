@@ -40,11 +40,11 @@ cfg.fem.bonus_int_order = 4
 # cfg.fem.mixed_method = "strain_heat"
 
 
-# cfg.nonlinear_solver = "pardiso"
-cfg.nonlinear_solver.method = "newton"
-cfg.nonlinear_solver.method.damping_factor = 1
-cfg.nonlinear_solver.max_iterations = 10
-cfg.nonlinear_solver.convergence_criterion = 1e-10
+cfg.fem.solver = "direct"
+cfg.fem.solver.method = "newton"
+cfg.fem.solver.method.damping_factor = 1
+cfg.fem.solver.method.max_iterations = 10
+cfg.fem.solver.method.convergence_criterion = 1e-10
 
 # ------- Setup Boundary Conditions and Domain Conditions ------- #
 Uinf = cfg.get_farfield_fields((1, 0))

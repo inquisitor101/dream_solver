@@ -2,12 +2,9 @@
 from __future__ import annotations
 
 import ngsolve as ngs
-import logging
 import typing
 from dream.time import TimeSchemes
-from dream.config import Integrals
-
-logger = logging.getLogger(__name__)
+from dream.config import Integrals, Log
 
 
 class IMEXRKSchemes(TimeSchemes):
@@ -74,28 +71,7 @@ class IMEXRKSchemes(TimeSchemes):
         self.add_sum_of_integrals(self.blfe, integrals, "imex bilinear form for explicit convection")
 
         # Initialize the nonlinear solver here. Notice, it uses a reference to blf, rhs and gfu.
-        self.root.nonlinear_solver.initialize(self.blf, self.rhs, self.root.fem.gfu)
-
-    def get_time_derivative(self, gfus: dict[str, ngs.GridFunction]) -> ngs.CF:
-        raise NotImplementedError()
-
-    def update_solution(self, t: float):
-        raise NotImplementedError()
-
-    def get_current_level(self, space: str, normalized: bool = False) -> ngs.CF:
-        gfus = self.gfus[space]
-        return gfus['n']
-
-    def get_time_step(self, normalized: bool = False) -> ngs.CF:
-        return self.dt
-
-    def solve_stage(self, t, s):
-        for it in self.root.nonlinear_solver.solve(t, s):
-            pass
-
-    def solve_current_time_level(self, t: float | None = None) -> typing.Generator[int | None, None, None]:
-        self.update_solution(t)
-        yield None
+        self.root.fem.solver.initialize_nonlinear_routine(self.blf, self.root.fem.gfu, self.rhs)
 
 
 class IMEXRK_ARS443(IMEXRKSchemes):
@@ -176,7 +152,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
         # Add the scaled mass matrix.
         blf['U']['mass'] = ngs.InnerProduct(ovadt*u, v) * ngs.dx
 
-    def update_solution(self, t: float):
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
 
         # Initial vector: M*U^n.
         self.mu0.data = self.mass.mat * self.root.fem.gfu.vec
@@ -191,7 +167,8 @@ class IMEXRK_ARS443(IMEXRKSchemes):
 
         self.rhs.data = self.mu0       \
             - ae21 * self.f1
-        self.solve_stage(t, 1)
+        for log in self.root.fem.solver.solve_nonlinear_system():
+            yield {'stage': 1, **log}
 
         # Stage: 2.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f2)
@@ -205,7 +182,8 @@ class IMEXRK_ARS443(IMEXRKSchemes):
             - ae31 * self.f1 \
             - ae32 * self.f2 \
             - a21 * self.x1
-        self.solve_stage(t, 2)
+        for log in self.root.fem.solver.solve_nonlinear_system():
+            yield {'stage': 2, **log}
 
         # Stage: 3.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f3)
@@ -223,7 +201,8 @@ class IMEXRK_ARS443(IMEXRKSchemes):
             - ae43 * self.f3 \
             - a31 * self.x1 \
             - a32 * self.x2
-        self.solve_stage(t, 3)
+        for log in self.root.fem.solver.solve_nonlinear_system():
+            yield {'stage': 3, **log}
 
         # Stage: 4.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f4)
@@ -245,7 +224,8 @@ class IMEXRK_ARS443(IMEXRKSchemes):
             - a41 * self.x1 \
             - a42 * self.x2 \
             - a43 * self.x3
-        self.solve_stage(t, 4)
+        for log in self.root.fem.solver.solve_nonlinear_system():
+            yield {'stage': 4, **log}
 
         # NOTE,
         # No need to explicitly update the gfu, since the last stage

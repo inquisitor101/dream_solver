@@ -46,10 +46,10 @@ cfg.riemann_solver = "hllem"
 cfg.mach_number = 0.001
 cfg.equation_of_state.heat_capacity_ratio = 1.4
 
-# cfg.nonlinear_solver = "pardiso"
-cfg.nonlinear_solver.method = "newton"
-cfg.nonlinear_solver.max_iterations = 300
-cfg.nonlinear_solver.convergence_criterion = 1e-12
+cfg.fem.solver = "direct"
+cfg.fem.solver.method = "newton"
+cfg.fem.solver.method.max_iterations = 300
+cfg.fem.solver.method.convergence_criterion = 1e-12
 
 
 # ------- Curve Mesh ------- #

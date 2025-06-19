@@ -1,13 +1,10 @@
 """ Definitions of implicit time marching schemes for a scalar transport equation. """
 from __future__ import annotations
-from dream.config import Integrals
+from dream.config import Integrals, Log
 from dream.time import TimeSchemes
 
 import ngsolve as ngs
-import logging
 import typing
-
-logger = logging.getLogger(__name__)
 
 
 class ImplicitSchemes(TimeSchemes):
@@ -55,7 +52,7 @@ class ImplicitSchemes(TimeSchemes):
 
         # Precompute the inverse of the bilinear matrix (if static condensation is false) 
         # or the factorization of the inverse of the Schur complement (if static condensation is True).
-        self.binv = self.blf.mat.Inverse(freedofs=self.root.fem.fes.FreeDofs(self.blf.condense), inverse=self.root.linear_solver.name)
+        self.binv = self.root.fem.solver.get_inverse(self.blf, self.root.fem.fes)
 
         # Precompute the (scaled, with c/dt, where c is some constant) mass matrix.
         self.mass = ngs.BilinearForm(self.root.fem.fes, symmetric=True)
@@ -66,14 +63,6 @@ class ImplicitSchemes(TimeSchemes):
 
         # Can be avoided, but for readability and given the simplicity of the PDE, we allocate a rhs anyway.
         self.rhs = self.root.fem.gfu.vec.CreateVector()
-
-    def update_solution(self, t: float):
-        raise NotImplementedError()
-
-    def solve_current_time_level(self, t: float | None = None) -> typing.Generator[int | None, None, None]:
-        logger.info(f"time: {t:6e}")
-        self.update_solution(t)
-        yield None
 
 
 class ImplicitEuler(ImplicitSchemes):
@@ -90,11 +79,9 @@ class ImplicitEuler(ImplicitSchemes):
 
     def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
         u, v = self.root.fem.TnT['U']
-        gfus = self.gfus['U'].copy()
         blf['U'][f'mass'] = ngs.InnerProduct(u/self.dt, v) * ngs.dx
  
-    def update_solution(self, t: float):
-
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
         # Compute the right-hand side, first.
         self.rhs.data = self.mass.mat * self.root.fem.gfu.vec
         if self.lf is not None:
@@ -108,6 +95,8 @@ class ImplicitEuler(ImplicitSchemes):
             self.root.fem.gfu.vec.data += self.blf.inner_solve * self.rhs
         else:
             self.root.fem.gfu.vec.data = self.binv * self.rhs
+
+        yield {}
 
 
 class BDF2(ImplicitSchemes):
@@ -123,11 +112,10 @@ class BDF2(ImplicitSchemes):
 
     def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
         u, v = self.root.fem.TnT['U']
-        gfus = self.gfus['U'].copy()
         c = 3.0/2.0 
         blf['U'][f'mass'] = ngs.InnerProduct( c*u/self.dt, v) * ngs.dx
      
-    def update_solution(self, t: float):
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
         
         # Scaling factors for the BDF2 scheme.
         f1 = 4.0/3.0
@@ -155,6 +143,8 @@ class BDF2(ImplicitSchemes):
             self.root.fem.gfu.vec.data += self.blf.inner_solve * self.rhs
         else:
             self.root.fem.gfu.vec.data = self.binv * self.rhs
+
+        yield {}
 
 
 class DIRKSchemes(TimeSchemes):
@@ -233,7 +223,7 @@ class DIRKSchemes(TimeSchemes):
 
         # Precompute the inverse of the bilinear matrix (if static condensation is false) 
         # or the factorization of the inverse of the Schur complement (if static condensation is True).
-        self.binv = self.blf.mat.Inverse(freedofs=self.root.fem.fes.FreeDofs(self.blf.condense), inverse=self.root.linear_solver.name)
+        self.binv = self.root.fem.solver.get_inverse(self.blf, self.root.fem.fes)
 
     def compute_previous_stage(self, U: ngs.GridFunction, rhs: ngs.BaseVector):
         
@@ -248,7 +238,7 @@ class DIRKSchemes(TimeSchemes):
         if self.is_dgfem and self.lf is not None:
             rhs.data -= self.lf.vec 
 
-    def solve_stage(self, t: float, U: ngs.GridFunction, rhs: ngs.BaseVector):
+    def solve_stage(self, U: ngs.GridFunction, rhs: ngs.BaseVector):
         if self.root.fem.static_condensation is True:
             rhs.data += self.blf.harmonic_extension_trans * rhs
             U.vec.data = self.binv * rhs
@@ -256,14 +246,6 @@ class DIRKSchemes(TimeSchemes):
             U.vec.data += self.blf.inner_solve * rhs
         else:
             U.vec.data = self.binv * rhs
-
-    def update_solution(self, t: float):
-        raise NotImplementedError()
-
-    def solve_current_time_level(self, t: float | None = None) -> typing.Generator[int | None, None, None]:
-        logger.info(f"time: {t:6e}")
-        self.update_solution(t)
-        yield None
 
 
 class SDIRK22(DIRKSchemes):
@@ -320,7 +302,7 @@ class SDIRK22(DIRKSchemes):
         # Add the scaled mass matrix.
         blf['U']['mass'] = ngs.InnerProduct(ovadt*u, v) * ngs.dx
 
-    def update_solution(self, t: float):
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
 
         # Initial rhs vector: M*U^n + lf.vec.
         self.mu0.data = self.mass.mat * self.root.fem.gfu.vec
@@ -332,13 +314,15 @@ class SDIRK22(DIRKSchemes):
 
         # Stage: 1.
         self.rhs.data = self.mu0 
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
 
         # Stage: 2.
         self.compute_previous_stage(self.root.fem.gfu, self.rhs)
         self.rhs.data *= a21
         self.rhs.data += self.mu0
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
+
+        yield {}
 
 
 class SDIRK33(DIRKSchemes):
@@ -399,7 +383,7 @@ class SDIRK33(DIRKSchemes):
         # Add the scaled mass matrix.
         blf['U']['mass'] = ngs.InnerProduct(ovadt*u, v) * ngs.dx
 
-    def update_solution(self, t: float):
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
  
         # Initial rhs vector: M*U^n + lf.vec.
         self.mu0.data = self.mass.mat * self.root.fem.gfu.vec
@@ -413,17 +397,19 @@ class SDIRK33(DIRKSchemes):
 
         # Stage: 1.
         self.rhs.data = self.mu0
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
         
         # Stage: 2.
         self.compute_previous_stage(self.root.fem.gfu, self.x1)
         self.rhs.data = self.mu0 + a21 * self.x1
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
 
         # Stage: 3.
         self.compute_previous_stage(self.root.fem.gfu, self.x2)
         self.rhs.data = self.mu0 + a31 * self.x1 + a32 * self.x2
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
+
+        yield {}
 
 
 

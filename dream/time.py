@@ -6,7 +6,7 @@ import ngsolve as ngs
 import logging
 import typing
 
-from dream.config import Integrals, Configuration, dream_configuration
+from dream.config import Integrals, Log, Configuration, dream_configuration
 
 if typing.TYPE_CHECKING:
     from dream.solver import SolverConfiguration
@@ -71,7 +71,7 @@ class Timer(Configuration):
 
         for i in range(1 - include_start, size + 1):
             self.t = start + stride*i*step
-            yield round(self.t.Get(), self.digit)
+            yield self.t.Get()
 
     def to_array(self, include_start: bool = False, stride: int = 1) -> np.ndarray:
         return np.array(list(self.start(include_start, stride)))
@@ -211,7 +211,7 @@ class TimeSchemes(Scheme):
     def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
         raise NotImplementedError("Overload this method in derived class!")
 
-    def solve_current_time_level(self) -> typing.Generator[int | None, None, None]:
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
         raise NotImplementedError("Overload this method in derived class!")
 
     def get_level_gridfunctions(self, gfu: ngs.GridFunction) -> dict[str, ngs.GridFunction]:
@@ -242,6 +242,21 @@ class TimeRoutine(Configuration, is_interface=True):
 
     def start_solution_routine(self, reassemble: bool = True) -> typing.Generator[float | None, None, None]:
         raise NotImplementedError("Overload this method in derived class!")
+
+    def parse_routine_log(self,
+                          it: int | None = None,
+                          error: float | None = None, **kwargs):
+        """ Parse the routine log and return a formatted string. """
+
+        fem = self.root.fem
+
+        msg = f"{fem.name} {fem.scheme.name}"
+        if it is not None:
+            msg += f" | it: {it}"
+        if error is not None:
+            msg += f" | error: {error:8e}"
+
+        return msg
 
 
 class StationaryRoutine(TimeRoutine):
@@ -291,11 +306,27 @@ class TransientRoutine(TimeRoutine):
 
         self._timer = timer
 
+    def parse_routine_log(self,
+                          stage: int = None,
+                          t: float = None,
+                          **kwargs):
+        """ Parse the routine log and return a formatted string. """
+
+        msg = super().parse_routine_log(**kwargs)
+
+        if stage is not None:
+            msg += f" | stage: {stage}"
+        if t is not None:
+            msg += f" | t: {t:.{self.timer.digit}f}"
+
+        return msg
+
     def start_solution_routine(self, reassemble: bool = True) -> typing.Generator[float | None, None, None]:
 
-        self.timer.reset()
-
         scheme = self.root.fem.scheme
+        timer = self.timer
+
+        timer.reset()
 
         if reassemble:
             scheme.assemble()
@@ -304,20 +335,20 @@ class TransientRoutine(TimeRoutine):
             io.save_pre_time_routine(self.timer.t.Get())
 
             # Solution routine starts here
-            for it, t in enumerate(self.timer()):
+            for rate, t in enumerate(self.timer()):
 
-                for _ in scheme.solve_current_time_level(t):
-                    continue
+                for log in scheme.solve_current_time_level():
+                    logger.info(self.parse_routine_log(t=t, **log))
 
                 scheme.update_gridfunctions()
 
                 yield t
 
-                io.save_in_time_routine(t, it)
+                io.save_in_time_routine(t, rate)
                 io.redraw()
             # Solution routine ends here
 
-            io.save_post_time_routine(t, it)
+            io.save_post_time_routine(t, rate)
 
 
 class PseudoTimeSteppingRoutine(TimeRoutine):
@@ -385,9 +416,11 @@ class PseudoTimeSteppingRoutine(TimeRoutine):
             io.save_pre_time_routine()
 
             # Solution routine starts here
-            for it in scheme.solve_current_time_level():
+            for log in scheme.solve_current_time_level():
+                logger.info(self.parse_routine_log(**log))
+
                 scheme.update_gridfunctions()
-                self.solver_iteration_update(it)
+                self.solver_iteration_update(log['it'])
                 io.redraw()
 
             yield None

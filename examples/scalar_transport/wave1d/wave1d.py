@@ -71,8 +71,6 @@ cfg.fem.scheme = "implicit_euler"
 cfg.time.timer.interval = (0.0, 12.0)
 cfg.time.timer.step = 0.01
 
-# cfg.linear_solver = "pardiso"
-
 U0 = transportfields()
 U0.phi = get_analytic_solution(cfg.time.timer.interval[0], cfg.convection_velocity[0])
 

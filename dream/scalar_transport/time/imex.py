@@ -1,7 +1,7 @@
 """ Definitions of the implicit-explicit (IMEX) time schemes for the scalar transport equation. 
 """
 from __future__ import annotations
-from dream.config import Integrals
+from dream.config import Integrals, Log
 from dream.time import TimeSchemes
 
 import ngsolve as ngs
@@ -28,7 +28,6 @@ class IMEXRKSchemes(TimeSchemes):
             blf.Assemble()
         else:
             raise ValueError("Can only support (pure) DG or HDG scheme for now.")
-
 
     def create_implicit_bilinear_form(self, 
                                       blf: ngs.BilinearForm, 
@@ -82,7 +81,6 @@ class IMEXRKSchemes(TimeSchemes):
                 else:
                     blf += cf
         logger.debug("Done.")
-
 
     def create_stage_implicit_bilinear_form(self, 
                                             blf: ngs.BilinearForm, 
@@ -163,7 +161,6 @@ class IMEXRKSchemes(TimeSchemes):
                     lf += cf
         logger.debug("Done.")
 
-
     def assemble(self) -> None:
 
         condense = self.root.fem.static_condensation
@@ -214,15 +211,6 @@ class IMEXRKSchemes(TimeSchemes):
         if self.lfc.integrators:
             self.lfc.Assemble()
    
-
-    def update_solution(self, t: float):
-        raise NotImplementedError()
-
-    def solve_current_time_level(self, t: float | None = None) -> typing.Generator[int | None, None, None]:
-        logger.info(f"time: {t:6e}")
-        self.update_solution(t)
-        yield None
-
 
 class IMEXRK_ARS443(IMEXRKSchemes):
     r""" Interface class responsible for configuring an additive 4-stage implicit, 4-stage explicit, 3rd-order implicit-explicit Runge-Kutta scheme that updates the current solution (:math:`t = t^{n}`) to the next time step (:math:`t = t^{n+1}`), see Section 2.8 in :cite:`ascher1997implicit`. Note, currently, the splitting assumes that 
@@ -342,7 +330,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
 
         # Precompute the inverse of the bilinear matrix (if static condensation is false) 
         # or the factorization of the inverse of the Schur complement (if static condensation is True).
-        self.binv = self.blf.mat.Inverse(freedofs=self.root.fem.fes.FreeDofs(self.blf.condense), inverse=self.root.linear_solver.name)
+        self.binv = self.root.fem.solver.get_inverse(self.blf, self.root.fem.fes)
 
 
     def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
@@ -361,7 +349,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
         blf['U']['mass'] = ngs.InnerProduct(ovadt*u, v) * ngs.dx
 
 
-    def solve_stage(self, t: float, U: ngs.GridFunction, rhs: ngs.BaseVector):
+    def solve_stage(self, U: ngs.GridFunction, rhs: ngs.BaseVector):
         if self.root.fem.static_condensation is True:
             rhs.data += self.blf.harmonic_extension_trans * rhs
             U.vec.data = self.binv * rhs
@@ -370,8 +358,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
         else:
             U.vec.data = self.binv * rhs
 
-
-    def update_solution(self, t: float):
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
 
         # Initial vector: M*U^n + lf.vec.
         self.mu0.data = self.mass.mat * self.root.fem.gfu.vec
@@ -391,7 +378,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
         ae21 = ovaii*self.ae21
 
         self.rhs.data = self.mu0 - ae21 * self.f1
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
 
         # Stage: 2.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f2)
@@ -411,7 +398,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
                       - ae31 * self.f1 \
                       - ae32 * self.f2 \
                       - a21  * self.x1
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
 
         # Stage: 3.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f3)
@@ -435,7 +422,7 @@ class IMEXRK_ARS443(IMEXRKSchemes):
                       - ae43 * self.f3 \
                       - a31  * self.x1 \
                       - a32  * self.x2
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
 
         # Stage: 4.
         self.blfe.Apply(self.root.fem.gfu.vec, self.f4)
@@ -463,7 +450,9 @@ class IMEXRK_ARS443(IMEXRKSchemes):
                       - a41 * self.x1  \
                       - a42 * self.x2  \
                       - a43 * self.x3
-        self.solve_stage(t, self.root.fem.gfu, self.rhs)
+        self.solve_stage(self.root.fem.gfu, self.rhs)
+
+        yield {}
 
 
 
