@@ -50,10 +50,8 @@ cfg.time = "transient"
 cfg.time.timer.interval = (0, 5)
 cfg.time.timer.step = 2e-3
 
-cfg.fem = "conservative"
+cfg.fem = "conservative_hdg"
 cfg.fem.order = 4
-cfg.fem.method = "hdg"
-cfg.fem.static_condensation = True
 cfg.fem.mixed_method = "inactive"
 cfg.fem.scheme = "bdf2"
 cfg.fem.bonus_int_order = cfg.fem.order

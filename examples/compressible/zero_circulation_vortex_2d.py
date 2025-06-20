@@ -30,10 +30,8 @@ cfg.reynolds_number = 150
 cfg.prandtl_number = 0.72
 cfg.riemann_solver = "upwind"
 
-cfg.fem = "conservative"
-cfg.fem.method = "hdg"
+cfg.fem = "conservative_hdg"
 cfg.fem.scheme = "bdf2"
-cfg.fem.static_condensation = True
 cfg.fem.order = 4
 cfg.fem.mixed_method = "inactive"
 cfg.fem.bonus_int_order = 4

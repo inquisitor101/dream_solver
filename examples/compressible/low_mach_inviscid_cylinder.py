@@ -36,10 +36,9 @@ cfg.time = "pseudo_time_stepping"
 cfg.time.timer.step = 0.001
 cfg.time.max_time_step = 10
 
-cfg.fem = 'conservative'
+cfg.fem = 'conservative_hdg'
 cfg.fem.order = 5
 cfg.fem.scheme = "implicit_euler"
-cfg.fem.static_condensation = True
 
 cfg.scaling = "acoustic"
 cfg.riemann_solver = "hllem"
