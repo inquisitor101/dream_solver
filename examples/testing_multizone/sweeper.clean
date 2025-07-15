@@ -1,0 +1,5 @@
+#!/bin/bash
+
+rm output/vtk/*.pvd
+rm output/vtk/*.vtk
+rm output/vtk/*.vtu

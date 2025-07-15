@@ -2,3 +2,4 @@
 from .time import *
 from .dg import ConservativeDG
 from .hdg import ConservativeHDG, ConservativeDG_HDG
+from .multizone import ConservativeDomainSplitSDG_HDG

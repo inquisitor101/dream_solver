@@ -9,7 +9,8 @@ from .implicit import (ImplicitEuler,
 from .explicit import (ExplicitEuler,
                        SSPRK3,
                        CRK4)
-from .imex import (IMEXRK_ARS443)
+from .imex import (IMEX_EULER,
+                   IMEXRK_ARS443)
 
 __all__ = ['ImplicitEuler',
            'BDF2',
@@ -21,4 +22,5 @@ __all__ = ['ImplicitEuler',
            'ExplicitEuler',
            'SSPRK3',
            'CRK4',
+           'IMEX_EULER',
            'IMEXRK_ARS443']

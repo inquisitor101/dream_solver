@@ -7,7 +7,93 @@ from dream.time import TimeSchemes
 from dream.config import Integrals, Log
 
 
-class IMEXRKSchemes(TimeSchemes):
+
+class IMEXRKDomainSplitSchemes(TimeSchemes):
+
+    def assemble(self) -> None:
+        condense = self.root.fem.static_condensation
+        
+        self.blfi_hdg = ngs.BilinearForm(self.root.fem.fes, condense=condense)
+        self.blfe_sdg = ngs.BilinearForm(self.root.fem.fes)
+
+        # Pre-process indices in different zones.
+        self.compute_nnz_bool_hdg()
+        self.compute_nnz_bool_sdg()
+        self.idx_sdg = [i for i, val in enumerate(self.nnz_sdg) if val]
+
+    def compute_nnz_bool_hdg(self) -> None:
+        uglobal = self.root.fem.fes.components[0]
+        self.nnz_hdg = ngs.BitArray(self.root.fem.fes.ndof)
+        self.nnz_hdg.Clear()
+        self.nnz_hdg[0:uglobal.ndof] = uglobal.GetDofs(self.mesh.Materials('hdg'))
+
+    def compute_nnz_bool_sdg(self) -> None:
+        uglobal = self.root.fem.fes.components[0]
+        self.nnz_sdg = ngs.BitArray(self.root.fem.fes.ndof)
+        self.nnz_sdg.Clear()
+        self.nnz_sdg[0:uglobal.ndof] = uglobal.GetDofs(self.mesh.Materials('sdg'))
+
+
+
+class IMEX_EULER(IMEXRKDomainSplitSchemes):
+
+    name: str = "imex_euler"
+    time_levels = ('n+1',)
+
+    def assemble(self) -> None:
+        super().assemble()
+       
+        self.gfu_sdg = self.root.fem.gfu.vec.CreateVector()
+        self.gfu_hdg = self.root.fem.gfu.vec.CreateVector()
+        self.gfu_tmp = self.root.fem.gfu.vec.CreateVector()
+        self.rhs_vec = self.root.fem.gfu.vec.CreateVector() 
+
+        # Compute the mass matrices.
+        self.mass_hdg = self.compute_mass_matrix_hdg()
+        self.minv_sdg = self.compute_minv_matrix_sdg()
+
+        # Initialize the nonlinear solver here. Notice, it uses a reference to blf, rhs and gfu.
+        self.root.fem.solver.initialize_nonlinear_routine(self.blfi_hdg, self.gfu_hdg, self.rhs_vec)
+
+        # Initialize the HDG solution.
+        self.gfu_hdg.data = self.root.fem.gfu.vec
+        for j in self.idx_sdg:
+            self.gfu_hdg[j] = 0
+
+
+
+    def compute_mass_matrix_hdg(self) -> ngs.BaseMatrix:
+        u, v = self.root.fem.TnT['U']
+        dV = ngs.dx(definedon=self.mesh.Materials('hdg'))
+        return ngs.BilinearForm( (1/self.dt) * u * v * dV ).Assemble().mat 
+
+    def compute_minv_matrix_sdg(self) -> ngs.BaseMatrix:
+        u, v = self.root.fem.TnT['U']
+        dV = ngs.dx(definedon=self.mesh.Materials('sdg'))
+        mass_sdg = ngs.BilinearForm( (1/self.dt) * u * v * dV ).Assemble().mat
+        return mass_sdg.Inverse( freedofs=self.nnz_sdg )
+
+    def add_symbolic_temporal_forms(self, blf: Integrals, lf: Integrals) -> None:
+        u, v = self.root.fem.TnT['U']
+        dV = ngs.dx(definedon=self.mesh.Materials('hdg'))
+        # We add the mass matrix to the implicit HDG section only.
+        blf['U']['mass'] = ngs.InnerProduct(u/self.dt, v) * dV
+
+    def solve_current_time_level(self) -> typing.Generator[Log, None, None]:
+
+        # Update current global temporary gfu.
+        self.gfu_tmp.data = self.root.fem.gfu.vec
+
+        # Update SDG first, which is explicit.
+        self.blfe_sdg.Apply(self.root.fem.gfu.vec, self.rhs_vec)
+        self.gfu_sdg.data = -self.minv_sdg * self.rhs_vec
+
+
+
+
+
+
+class IMEXRKTermSplitSchemes(TimeSchemes):
 
     def assemble(self) -> None:
 
@@ -74,7 +160,7 @@ class IMEXRKSchemes(TimeSchemes):
         self.root.fem.solver.initialize_nonlinear_routine(self.blf, self.root.fem.gfu, self.rhs)
 
 
-class IMEXRK_ARS443(IMEXRKSchemes):
+class IMEXRK_ARS443(IMEXRKTermSplitSchemes):
 
     name: str = "imex_rk_ars443"
     time_levels = ('n', 'n+1')
