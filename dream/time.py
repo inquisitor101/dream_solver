@@ -520,7 +520,6 @@ class MultizoneIMEXTimeRoutine(TimeRoutine):
         self.cfg_explicit = cfg_explicit
 
     # Function that checks whether the specified schemes form a viable IMEX pair.
-
     def is_valid_imex_schemes(self) -> bool:
 
         n_imp = self.cfg_implicit.fem.scheme.get_num_stages()
@@ -541,7 +540,7 @@ class MultizoneIMEXTimeRoutine(TimeRoutine):
             return False
 
         # Book-keep number of stages, including first (padded) stage.
-        self.nStage = len(cdt_imp)
+        self.n_stage = len(cdt_imp)
 
         # All good.
         return True
@@ -610,15 +609,15 @@ class MultizoneIMEXTimeRoutine(TimeRoutine):
     def solve_stages(self, t0: float) -> bool:
 
         # We loop over each stage and solve explicit regions first, then implicit ones.
-        for iStage in range(1, self.nStage):
-            for log_explicit in self.cfg_explicit.fem.scheme.solve_stage(iStage, t0):
+        for i_stage in range(1, self.n_stage):
+            for log_explicit in self.cfg_explicit.fem.scheme.solve_stage(i_stage, t0):
                 logger.info(self.parse_routine_log(cfg=self.cfg_explicit, **log_explicit))
 
                 if "is_diverged" in log_explicit:
                     logger.error("Explicit Multizone IMEX routine diverged!")
                     return True
 
-            for log_implicit in self.cfg_implicit.fem.scheme.solve_stage(iStage, t0):
+            for log_implicit in self.cfg_implicit.fem.scheme.solve_stage(i_stage, t0):
                 logger.info(self.parse_routine_log(cfg=self.cfg_implicit, **log_implicit))
 
                 if "is_diverged" in log_implicit:
@@ -715,9 +714,9 @@ class LocalTimeIMEXRoutine(TimeRoutine):
 
 
 
-# # # # # # # # #
-# TESTING
-# # # # # # # # #
+# # # # # # # # # # # # #
+# TESTING: 1-stage.
+# # # # # # # # # # # # #
 
 
 
@@ -915,6 +914,323 @@ class PredictorCorrectorIMEXRoutine(TimeRoutine):
 
         # Reset the time step back to the explicit time step.   
         self.timer.step.Set( self.dte )
+
+    def solve(self, reassemble: bool = True):
+        for t in self.start_solution_routine(reassemble):
+            pass
+
+
+
+
+
+
+
+# # # # # # # # # # # # #
+# TESTING: multi-stage.
+# # # # # # # # # # # # #
+
+
+
+class MultiStagePredictorCorrectorIMEXRoutine(TimeRoutine):
+
+    name: str = "multistage_predictor_corrector_imex_transient"
+
+    def __init__(self, cfg_explicit=None, cfg_predictor=None, cfg_corrector=None, root=None, **default):
+        
+        # Parent ctor.
+        super().__init__(root, **default)
+        
+        # Keep references for the configurations.
+        self.cfg_explicit  = cfg_explicit
+        self.cfg_predictor = cfg_predictor
+        self.cfg_corrector = cfg_corrector
+
+
+    # Function that checks whether the specified schemes form a viable IMEX pair.
+    def is_valid_imex_schemes(self) -> bool:
+
+        n_imp = self.cfg_corrector.fem.scheme.get_num_stages()
+        n_exp = self.cfg_explicit.fem.scheme.get_num_stages()
+
+        if n_imp != n_exp:
+            return False
+
+        cdt_cor = self.cfg_corrector.fem.scheme.get_stage_dt()
+        cdt_exp = self.cfg_explicit.fem.scheme.get_stage_dt()
+        
+        # Extract the currently set corrector and explicit time steps.
+        dtc = self.cfg_corrector.time.timer.step.Get()
+        dte = self.cfg_explicit.time.timer.step.Get()
+
+        # Normalize the stage time-steps, since they're supposed to be different here.
+        normalized_cdt_cor = [ x / dtc for x in cdt_cor ] 
+        normalized_cdt_exp = [ x / dte for x in cdt_exp ]
+
+        # NOTE, if AIMEX schemes are used, this condition probably will fail.
+        if not np.allclose(normalized_cdt_cor, normalized_cdt_exp, rtol=1e-10, atol=1e-10):
+            return False
+
+        # NOTE, all first stages are padded, since they start explicitly, i.e. cdt[0] = 0.
+        if (n_imp != len(cdt_cor)-1) or (n_exp != len(cdt_exp)-1):
+            return False
+
+        # Book-keep number of stages, including first (padded) stage.
+        self.n_stage = len(cdt_cor)
+
+        # Compute and store the implicit stage time intervals, which is the corrector.
+        # NOTE, these are not normalized -- they are based on dt_imp (ie, corrector).
+        self.dt_per_stage = []
+        for i in range(1, self.n_stage):
+            
+            # Current corrector interval.
+            dts = cdt_cor[i] - cdt_cor[i-1]
+            
+            # Consistency check: ensure stage intervals are strictly increasing.
+            if (i > 1) and (dts < 0.0 or abs(dts) < 1e-6):
+                raise ValueError(f"Stage intervals of corrector scheme must be increasing in time.")
+            
+            # Book-keep current stage interval.
+            self.dt_per_stage.append( dts )
+
+        # Ensure the stage intervals sum up to the corrector's time-step. 
+        if abs( sum(self.dt_per_stage) - dtc ) > 1e-8:
+            raise ValueError(f"Sum of stage intervals, does not match corrector's time step.")
+
+        # Also book-keep a normalized stage time-step, for later.
+        self.normalized_dt_per_stage = [ dts / dtc for dts in self.dt_per_stage ]
+
+        # Ensure the normalized stage intervals sum up to one.
+        if abs( sum(self.normalized_dt_per_stage) - 1.0) > 1e-8:
+            raise ValueError(f"Sum of normalized stage intervals is not one.")
+
+        # All good.
+        return True
+
+    def initialize_predictor_corrector(self):
+
+        # For now, ensure the corrector and the explicit schemes form compatible IMEX schemes.
+        if not self.is_valid_imex_schemes():
+            raise TypeError(f"Specified (explicit-corrector) time schemes do not form an IMEX pair.")
+
+        # For now, ensure the corrector and the explicit schemes form compatible IMEX schemes.
+        if self.n_stage < 2:
+            raise TypeError(f"Inefficient configuration: corrector-explicit schemes must be multistage.")
+
+        # Extract the initial explicit time step. 
+        # NOTE, this should be made autonomous, by computing it internally based on a stable CFL number.
+        self.dte_max = self.cfg_explicit.time.timer.step.Get()
+
+        # Book-keep the corrector time-step.
+        self.dtc = self.cfg_corrector.time.timer.step.Get()
+        
+        # Initialilze the stage-adaptive explicit and predictor time-steps. 
+        self.dte_per_stage = [] 
+        self.dtp_per_stage = [] 
+        
+        # Also, initialize and book-keep the number of explicit evaluations, per corrector stage.
+        self.msteps_per_stage = []
+
+        # Deduce the explicit and predictor time-steps for each (corrector-)stage.
+        for dts in self.dt_per_stage:
+            
+            # Deduce number of explicit steps, per corrector stage interval.
+            ne = np.ceil( dts / self.dte_max ).astype(int)
+            
+            # Consistency and efficiency check.
+            if ne < 2:
+                raise ValueError(f"Consider increasing the corrector's time-step. Inefficient ne: {ne}.")
+            
+            # Compute the explicit time-step in this interval.
+            dte = dts / ne
+
+            # The predictor's time-step is taken as the last explicit stage in dts, to be 
+            # consistent with interpolation -- otherwise, we need to extrapolate.
+            dtp = dts - dte * self.normalized_dt_per_stage[-1] 
+
+            # Set the explicit time-step of the current stage interval dts.
+            self.dte_per_stage.append( dte )
+            
+            # Set the predictor time-step of the current stage interval dts.
+            self.dtp_per_stage.append( dtp ) 
+
+            # Set the number of explicit steps done in the current stage dts.
+            self.msteps_per_stage.append( ne )
+
+        
+        # Display some useful information.
+        print( f"For a single corrector step, dtc = {self.dtc:.10e}, we have: " ) 
+        ts = 0.0
+        for i in range( len(self.msteps_per_stage) ):
+            m   = self.msteps_per_stage[i]
+            dte = self.dte_per_stage[i]
+            dtp = self.dtp_per_stage[i]
+            dts = self.dt_per_stage[i]
+            ts += dts
+            print( f" stage: {i} has: m = {m}, dtp: {dtp:.10e}, dte: {dte:.10e}, dts: {dts:.10e}, ts: {ts:.10e}" )
+        sum_dte = sum( m * dt for m, dt in zip(self.msteps_per_stage, self.dte_per_stage) )
+        print( f" ... with: sum_i ( dte_i * m_i ) = {sum_dte:.10e}" )
+
+        from .compressible.conservative.time import ImplicitEuler
+        if not isinstance(self.cfg_predictor.fem.scheme, ImplicitEuler):
+            raise ValueError(f"Predictor scheme must use an implicit Euler for now.") 
+        
+        # Create the prediction endpoints.
+        self.y1 = self.cfg_predictor.fem.gfu.vec.CreateVector()
+        self.y2 = self.cfg_predictor.fem.gfu.vec.CreateVector()
+        
+
+    def update_predictor(self, t0, stage: int):
+        
+        # Deduce the current stage time-step of the predictor.
+        dtp = self.dtp_per_stage[stage]
+
+        # First, we need to reset the predictor state, to the corrector state, 
+        # since this marks a synchronization point.
+        self.cfg_predictor.fem.gfu.vec.data = self.cfg_corrector.fem.gfu.vec
+
+        # Then, we also reset the current time, to match the corrector's.
+        self.t1 = t0 
+        # Also, update the time step of the prediction.
+        self.t2 = t0 + dtp
+
+        # Next, we also set the predictor time step, based on the current stage interval.
+        self.cfg_predictor.time.timer.step.Set( dtp )
+
+        # Then, we copy the current corrector's DOF to y1, which is y_i.
+        # NOTE, here i is the stage value, not necessarily u^{n}.
+        self.y1.data = self.cfg_corrector.fem.gfu.vec
+
+        # Second, we solve for the predicted solution.
+        for log in self.cfg_predictor.fem.scheme.solve_current_time_level(t0):
+            logger.info(self.parse_routine_log(**log, cfg=self.cfg_predictor))
+
+        # Third, we copy the last DOF of the predicted solution.
+        # Note, a copy is needed here, because the predictor gfu is shared with 
+        # the interface of the explicit gfu (which will be modified in time).
+        self.y2.data = self.cfg_predictor.fem.gfu.vec 
+        
+    def set_predictor_value(self, t):
+        
+        # Check if this indeed is an interpolation.
+        tol = 1e-5
+        if (t < self.t1 - tol) or (t > self.t2 + tol):
+            raise ValueError( f"Extrapolation detected, t={t} must be in [{self.t1}, {self.t2}]" )
+        
+        if self.t2 < self.t1:
+            raise ValueError( f"Interpolaton interval is ill-defined, t2 = {self.t2:.5e} < t1 = {self.t1:.5e}" )
+
+        # Lagrange shape function, at t=t_1.
+        ell1 = (t - self.t2)/(self.t1 - self.t2)
+        
+        # Lagrange shape function, at t=t_2.
+        ell2 = (t - self.t1)/(self.t2 - self.t1)
+
+        # Set the interpolated value in the predictor gfu at the interface.
+        self.cfg_predictor.fem.gfu.vec.data = ell1 * self.y1 + ell2 * self.y2
+
+    def start_solution_routine(self, reassemble=True):
+
+        exp_scheme = self.cfg_explicit.fem.scheme
+        pre_scheme = self.cfg_predictor.fem.scheme
+        cor_scheme = self.cfg_corrector.fem.scheme
+
+        if reassemble: 
+            self.cfg_explicit.fem.scheme.assemble()
+            self.cfg_predictor.fem.scheme.assemble()
+            self.cfg_corrector.fem.scheme.assemble()
+
+        # Initialize the global (corrector) and local (explicit) timers.
+        ltimer = self.cfg_explicit.time.timer
+        gtimer = self.cfg_corrector.time.timer
+        ltimer.reset()
+        gtimer.reset()
+
+        # Initialize the predictor-corrector routine.
+        self.initialize_predictor_corrector()
+
+        # Start marching in time.
+        with self.cfg_corrector.io as io_cor, self.cfg_explicit.io as io_exp:
+
+            io_cor.save_pre_time_routine(gtimer.t.Get())
+            io_exp.save_pre_time_routine(gtimer.t.Get())
+
+            # Intervals of dtc, which are global time steps.
+            for rate, t0, t1 in gtimer():
+
+                # This loop is based on the corrector stages.
+                for k_stage, m_step in enumerate(self.msteps_per_stage):
+
+                    # Initialize the prediction endpoints: y1 and y2.
+                    self.update_predictor( gtimer.t.Get(), stage=k_stage )
+                    
+                    # Deduce the explicit time step of the current stage.
+                    dte = self.dte_per_stage[k_stage]
+
+                    # Update the explicit scheme with the current time step.
+                    self.cfg_explicit.time.timer.step.Set( dte )
+                    
+                    # Intervals of dte, which are the local explicit time steps.
+                    for j_step in range(m_step):
+               
+                        # Solve the explicit stages.
+                        if self.solve_explicit_stages( ltimer.t.Get() ):
+                            break
+
+                        self.cfg_explicit.fem.scheme.update_solution(is_adaptive=True)
+                        self.cfg_explicit.fem.scheme.update_gridfunctions()
+
+                    # Solve the (k+1)th implicit stage in the corrector. The +1 is needed since
+                    # the indexing is based on a padded convention.
+                    for log_corrector in self.cfg_corrector.fem.scheme.solve_stage(k_stage+1, t0):
+                        logger.info(self.parse_routine_log(cfg=self.cfg_corrector, **log_corrector))
+
+                    if "is_diverged" in log_corrector:
+                        logger.error("Corrector Multizone IMEX routine diverged!")
+                        break
+
+                    # Display information.
+                    print( "=====================================================================" )
+                    print(f"*  Corrector iteration: {k_stage} of {len(self.msteps_per_stage)-1}")
+                    print(f"*  ...  explicit evaluations: m = {m_step}" )
+                    print( "=====================================================================" )
+                
+                # Display information.
+                print( "=====================================================================" )
+                print(f"*  Completed one global (corrector-)time step of: dt = {self.dtc:.5e}" )
+                print( "=====================================================================" )
+
+
+                self.cfg_corrector.fem.scheme.update_solution()
+                self.cfg_corrector.fem.scheme.update_gridfunctions()
+
+                io_exp.save_in_time_routine(t1, rate)
+                io_cor.save_in_time_routine(t1, rate)
+
+            io_exp.save_post_time_routine(t1, rate)
+            io_cor.save_post_time_routine(t1, rate)
+
+        # Reset the time step back to the explicit time step.   
+        self.timer.step.Set( self.dte )
+
+    def solve_explicit_stages(self, t0: float) -> bool:
+
+        # We loop over each stage and solve explicit regions.
+        for i_stage in range(1, self.n_stage):
+
+            # Get the current local time.
+            t = self.cfg_explicit.time.timer.t.Get()
+
+            # Update the interface prediction.
+            self.set_predictor_value( t )
+
+            for log_explicit in self.cfg_explicit.fem.scheme.solve_stage(i_stage, t0, is_adaptive=True):
+                logger.info(self.parse_routine_log(cfg=self.cfg_explicit, **log_explicit))
+
+                if "is_diverged" in log_explicit:
+                    logger.error("Explicit Multizone IMEX routine diverged!")
+                    return True
+
+        return False
 
     def solve(self, reassemble: bool = True):
         for t in self.start_solution_routine(reassemble):

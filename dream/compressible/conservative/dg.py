@@ -8,7 +8,8 @@ from dream.time import (TimeSchemes,
                         TransientRoutine,
                         PseudoTimeSteppingRoutine,
                         MultizoneIMEXTimeRoutine,
-                        PredictorCorrectorIMEXRoutine)
+                        PredictorCorrectorIMEXRoutine,
+                        MultiStagePredictorCorrectorIMEXRoutine)
 from dream.config import dream_configuration, Integrals
 from dream.mesh import SpongeLayer
 from dream.compressible.config import (flowfields,
@@ -76,6 +77,8 @@ class ConservativeDG(ConservativeFiniteElementMethod):
             OPTIONS = [ExplicitEuler, RK_ARS22, RK_ARS33, RK_ARS43]
         elif isinstance(self.root.time, PredictorCorrectorIMEXRoutine):
             OPTIONS = [ExplicitEuler]
+        elif isinstance(self.root.time, MultiStagePredictorCorrectorIMEXRoutine):
+            OPTIONS = [RK_ARS22, RK_ARS33, RK_ARS43]
         else:
             raise TypeError("SDG method only supports transient or mutizone time routines!")
         self._scheme = self._get_configuration_option(scheme, OPTIONS, TimeSchemes)

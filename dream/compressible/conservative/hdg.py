@@ -9,7 +9,8 @@ from dream.time import (TimeSchemes,
                         TransientRoutine,
                         PseudoTimeSteppingRoutine,
                         MultizoneIMEXTimeRoutine,
-                        PredictorCorrectorIMEXRoutine)
+                        PredictorCorrectorIMEXRoutine,
+                        MultiStagePredictorCorrectorIMEXRoutine)
 from dream.config import dream_configuration, Integrals
 from dream.mesh import SpongeLayer, PSpongeLayer, Periodic, Initial
 from dream.compressible.config import (flowfields,
@@ -89,6 +90,8 @@ class ConservativeHDG(ConservativeFiniteElementMethod):
             OPTIONS = [ImplicitEuler, SDIRK22, SDIRK33, SDIRK43]
         elif isinstance(self.root.time, PredictorCorrectorIMEXRoutine):
             OPTIONS = [ImplicitEuler]
+        elif isinstance(self.root.time, MultiStagePredictorCorrectorIMEXRoutine):
+            OPTIONS = [SDIRK22, SDIRK33, SDIRK43]
         else:
             raise TypeError("HDG method only supports transient, pseudo time stepping or multizone time routines!")
         self._scheme = self._get_configuration_option(scheme, OPTIONS, TimeSchemes)

@@ -53,13 +53,16 @@ class ExplicitSchemes(TimeSchemes):
         # Add the mass matrix.
         blf['U']['mass'] = ngs.InnerProduct(u/self.dt, v) * ngs.dx
 
+        # Book-keep the initial time step, in case adaptive stepping is specified.
+        self.dt0 = self.dt.Get()
+
     def get_num_stages(self) -> int:
         raise NotImplementedError()
     
     def get_stage_dt(self) -> list[float]:
         raise NotImplementedError()
     
-    def update_solution(self) -> None:
+    def update_solution(self, is_adaptive: bool = False) -> None:
         pass
 
     def is_diverged(self, vec) -> bool:
@@ -95,7 +98,7 @@ class ExplicitEuler(ExplicitSchemes):
         return [x * self.dt.Get() for x in [0.0, 1.0]] 
 
     @time_generator(r"stage {0}")
-    def solve_stage(self, iStage, t0) -> typing.Generator[Log, None, None]:
+    def solve_stage(self, iStage, t0, is_adaptive: bool = False) -> typing.Generator[Log, None, None]:
 
         if iStage > 1:
             raise TypeError(f"Stage {iStage} does not exist.")
@@ -105,7 +108,10 @@ class ExplicitEuler(ExplicitSchemes):
         if self.lf is not None:
             self.rhs.data -= self.lf.vec
 
-        self.root.fem.gfu.vec.data -= self.minv * self.rhs
+        if is_adaptive:
+            self.root.fem.gfu.vec.data -= (self.dt.Get() / self.dt0) * self.minv * self.rhs
+        else:
+            self.root.fem.gfu.vec.data -= self.minv * self.rhs
 
 
         self.set_stage_t(iStage, t0)
@@ -155,13 +161,17 @@ class RK_ARS22(ExplicitSchemes):
         return [x * self.dt.Get() for x in [self.c1, self.c2, self.c3]] 
 
     @time_generator(r"stage {0}")
-    def solve_stage(self, iStage, t0) -> typing.Generator[Log, None, None]:
+    def solve_stage(self, iStage, t0: float, is_adaptive: bool = False) -> typing.Generator[Log, None, None]:
         
         if iStage == 1:
             
             self.U0.data = self.root.fem.gfu.vec
             self.blf.Apply(self.root.fem.gfu.vec, self.K1) 
-            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( self.a21 * self.K1 )
+
+            a21_dt = self.a21
+            if is_adaptive:
+                a21_dt *= (self.dt.Get() / self.dt0)
+            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( a21_dt * self.K1 )
 
             self.set_stage_t(iStage, t0)
             yield {'t': self.t.Get(), 'stage': iStage}
@@ -169,7 +179,13 @@ class RK_ARS22(ExplicitSchemes):
         elif iStage == 2:
             
             self.blf.Apply(self.root.fem.gfu.vec, self.K2)
-            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( self.a31 * self.K1 + self.a32 * self.K2 )
+
+            a31_dt = self.a31
+            a32_dt = self.a32
+            if is_adaptive:
+                a31_dt *= (self.dt.Get() / self.dt0)
+                a32_dt *= (self.dt.Get() / self.dt0)
+            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( a31_dt * self.K1 + a32_dt * self.K2 )
 
             self.set_stage_t(iStage, t0)
             yield {'t': self.t.Get(), 'stage': iStage}
@@ -220,13 +236,17 @@ class RK_ARS33(ExplicitSchemes):
         return [ci * self.dt.Get() for ci in self.c] 
 
     @time_generator(r"stage {0}")
-    def solve_stage(self, iStage, t0) -> typing.Generator[Log, None, None]:
+    def solve_stage(self, iStage, t0: float, is_adaptive: bool = False) -> typing.Generator[Log, None, None]:
 
         if iStage == 1:
             
             self.U0.data = self.root.fem.gfu.vec
             self.blf.Apply(self.root.fem.gfu.vec, self.K1) 
-            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( self.a21 * self.K1 )
+            
+            a21_dt = self.a21
+            if is_adaptive:
+                a21_dt *= (self.dt.Get() / self.dt0)
+            self.root.fem.gfu.vec.data = self.U0 - self.minv * ( a21_dt * self.K1 )
 
             self.set_stage_t(iStage, t0)
             yield {'t': self.t.Get(), 'stage': iStage}
@@ -234,29 +254,51 @@ class RK_ARS33(ExplicitSchemes):
         elif iStage == 2:
             
             self.blf.Apply(self.root.fem.gfu.vec, self.K2)
-            self.root.fem.gfu.vec.data = self.U0 \
-                    - self.minv * ( self.a31 * self.K1 + self.a32 * self.K2 )
             
+            a31_dt = self.a31
+            a32_dt = self.a32
+            if is_adaptive:
+                a31_dt *= (self.dt.Get() / self.dt0)
+                a32_dt *= (self.dt.Get() / self.dt0)
+            self.root.fem.gfu.vec.data = self.U0 \
+                    - self.minv * ( a31_dt * self.K1 + a32_dt * self.K2 )
+
             self.set_stage_t(iStage, t0)
             yield {'t': self.t.Get(), 'stage': iStage}
 
         elif iStage == 3:
 
             self.blf.Apply(self.root.fem.gfu.vec, self.K3)
-            self.root.fem.gfu.vec.data = self.U0 \
-                    - self.minv * ( self.a41 * self.K1 + self.a42 * self.K2 + self.a43 * self.K3 )
             
+            a41_dt = self.a41
+            a42_dt = self.a42
+            a43_dt = self.a43
+            if is_adaptive:
+                a41_dt *= (self.dt.Get() / self.dt0)
+                a42_dt *= (self.dt.Get() / self.dt0)
+                a43_dt *= (self.dt.Get() / self.dt0)
+            self.root.fem.gfu.vec.data = self.U0 \
+                    - self.minv * ( a41_dt * self.K1 + a42_dt * self.K2 + a43_dt * self.K3 )
+
             self.set_stage_t(iStage, t0)
             yield {'t': self.t.Get(), 'stage': iStage}
 
         else:
             raise TypeError(f"Stage {iStage} does not exist.")
 
-    def update_solution(self) -> None:
+    def update_solution(self, is_adaptive: bool = False) -> None:
 
         self.blf.Apply(self.root.fem.gfu.vec, self.K1) # K1 is used to store K4, since b1 = 0
+        
+        b2_dt = self.b2
+        b3_dt = self.b3
+        b4_dt = self.b4
+        if is_adaptive:
+            b2_dt *= (self.dt.Get() / self.dt0)
+            b3_dt *= (self.dt.Get() / self.dt0)
+            b4_dt *= (self.dt.Get() / self.dt0)
         self.root.fem.gfu.vec.data = self.U0 \
-                - self.minv * ( self.b2 * self.K2 + self.b3 * self.K3 + self.b4 * self.K1 )
+                - self.minv * ( b2_dt * self.K2 + b3_dt * self.K3 + b4_dt * self.K1 )
 
     def solve_current_time_level(self, t0: float) -> typing.Generator[Log, None, None]:
 
