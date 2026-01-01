@@ -27,7 +27,7 @@ from dream.compressible.config import (flowfields,
                                        CBC)
 
 from .diffusion import ViscousTreatment, InteriorPenaltyHDG
-from .time import ImplicitEuler, BDF2, BDF3, SDIRK22, SDIRK33, SDIRK43, SDIRK54, DIRK34_LDD, DIRK43_WSO2, IMEXRK_ARS443
+from .time import ImplicitEuler, BDF2, BDF3, SDIRK22, SDIRK33, SDIRK43, SDIRK54, DIRK34_LDD, DIRK43_WSO2, IMEXRK_ARS443, BDF2_Adaptive
 from .diffusion import ViscousTreatment, StrainHeat, Gradient
 
 logger = logging.getLogger(__name__)
@@ -83,7 +83,7 @@ class ConservativeHDG(ConservativeFiniteElementMethod):
     @scheme.setter
     def scheme(self, scheme: TimeSchemes) -> None:
         if isinstance(self.root.time, TransientRoutine):
-            OPTIONS = [ImplicitEuler, BDF2, BDF3, IMEXRK_ARS443, SDIRK22, SDIRK33, SDIRK43, SDIRK54, DIRK34_LDD, DIRK43_WSO2]
+            OPTIONS = [ImplicitEuler, BDF2, BDF3, IMEXRK_ARS443, SDIRK22, SDIRK33, SDIRK43, SDIRK54, DIRK34_LDD, DIRK43_WSO2, BDF2_Adaptive]
         elif isinstance(self.root.time, PseudoTimeSteppingRoutine):
             OPTIONS = [ImplicitEuler, BDF2]
         elif isinstance(self.root.time, MultizoneIMEXTimeRoutine):

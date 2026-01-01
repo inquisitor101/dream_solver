@@ -590,7 +590,7 @@ class MultizoneIMEXTimeRoutine(TimeRoutine):
                 self.cfg_explicit.fem.scheme.update_solution()
                 self.cfg_implicit.fem.scheme.update_solution()
                 
-                print(flush=True) # separate info for each stage. 
+                print(flush=True) # separate info for each step. 
                 yield t1
                 
                 self.cfg_explicit.fem.scheme.update_gridfunctions()
@@ -693,7 +693,7 @@ class LocalTimeIMEXRoutine(TimeRoutine):
                 # These are needed in case the schemes aren't stiffly accurate.
                 self.cfg_implicit.fem.scheme.update_solution()
                 
-                print(flush=True) # separate info for each stage. 
+                print(flush=True) # separate info for each step. 
                 yield t1
                 
                 self.cfg_implicit.fem.scheme.update_gridfunctions()
@@ -703,7 +703,6 @@ class LocalTimeIMEXRoutine(TimeRoutine):
 
             io_exp.save_post_time_routine(t1, rate)
             io_imp.save_post_time_routine(t1, rate)
-
 
     def solve(self, reassemble: bool = True):
         for t in self.start_solution_routine(reassemble):
@@ -1070,45 +1069,101 @@ class MultiStagePredictorCorrectorIMEXRoutine(TimeRoutine):
         sum_dte = sum( m * dt for m, dt in zip(self.msteps_per_stage, self.dte_per_stage) )
         print( f" ... with: sum_i ( dte_i * m_i ) = {sum_dte:.10e}" )
 
-        from .compressible.conservative.time import ImplicitEuler
-        if not isinstance(self.cfg_predictor.fem.scheme, ImplicitEuler):
-            raise ValueError(f"Predictor scheme must use an implicit Euler for now.") 
+        from .compressible.conservative.time import ImplicitEuler, BDF2_Adaptive
+        if not isinstance( self.cfg_predictor.fem.scheme, (ImplicitEuler, BDF2_Adaptive) ):
+            raise ValueError(f"Predictor scheme must use an implicit Euler or adaptive BDF2 for now.") 
         
         # Create the prediction endpoints.
-        self.y1 = self.cfg_predictor.fem.gfu.vec.CreateVector()
-        self.y2 = self.cfg_predictor.fem.gfu.vec.CreateVector()
+        self.y1 = self.cfg_predictor.fem.gfus['U'].vec.CreateVector() 
+        self.y2 = self.cfg_predictor.fem.gfus['U'].vec.CreateVector()
+
+        self.t1 = self.cfg_corrector.time.timer.t.Get()
+        self.t2 = self.cfg_corrector.time.timer.t.Get()
         
+        self.initial_step = True
+        self.is_two_step = False
+        if isinstance( self.cfg_predictor.fem.scheme, BDF2_Adaptive ):
+            self.is_two_step = True
 
     def update_predictor(self, t0, stage: int):
         
-        # Deduce the current stage time-step of the predictor.
-        dtp = self.dtp_per_stage[stage]
+        if self.is_two_step:
+            
+            # Deduce the current stage time-step of the predictor.
+            dtp = self.dtp_per_stage[stage]
 
-        # First, we need to reset the predictor state, to the corrector state, 
-        # since this marks a synchronization point.
-        self.cfg_predictor.fem.gfu.vec.data = self.cfg_corrector.fem.gfu.vec
+            # Deduce the old and new time-steps, separating n-1, n, n+1 of the BDF2.
+            dt_old = t0 - self.t1 
+            dt_new = dtp
+            
+            # For the first step, use a large dt_old, such that it almost is an implicit Euler.
+            if self.initial_step:
+                dt_old = dt_new * 1e6
+                self.initial_step = False
 
-        # Then, we also reset the current time, to match the corrector's.
-        self.t1 = t0 
-        # Also, update the time step of the prediction.
-        self.t2 = t0 + dtp
+            # Consistency check.
+            if dt_old < 0.0:
+                raise ValueError(f"dt[n-1]: {dt_old} cannot be negative.")
 
-        # Next, we also set the predictor time step, based on the current stage interval.
-        self.cfg_predictor.time.timer.step.Set( dtp )
+            # Update the multi-step time-steps.
+            self.cfg_predictor.fem.scheme.dt_old.Set( dt_old )
+            self.cfg_predictor.fem.scheme.dt_new.Set( dt_new )
+                        
+            # Update the grid functions, needed for the prediction.
+            self.cfg_predictor.fem.scheme.gfus['U']['n-1'].vec.data = self.y1
+            self.cfg_predictor.fem.scheme.gfus['U']['n'].vec.data = self.cfg_corrector.fem.gfu.components[0].vec
 
-        # Then, we copy the current corrector's DOF to y1, which is y_i.
-        # NOTE, here i is the stage value, not necessarily u^{n}.
-        self.y1.data = self.cfg_corrector.fem.gfu.vec
+            # Then, we also reset the current time, to match the corrector's.
+            self.t1 = t0 
+            # Also, update the time step of the prediction.
+            self.t2 = t0 + dtp
 
-        # Second, we solve for the predicted solution.
-        for log in self.cfg_predictor.fem.scheme.solve_current_time_level(t0):
-            logger.info(self.parse_routine_log(**log, cfg=self.cfg_predictor))
+            # Next, we also set the predictor time step, based on the current stage interval.
+            self.cfg_predictor.time.timer.step.Set( dtp )
 
-        # Third, we copy the last DOF of the predicted solution.
-        # Note, a copy is needed here, because the predictor gfu is shared with 
-        # the interface of the explicit gfu (which will be modified in time).
-        self.y2.data = self.cfg_predictor.fem.gfu.vec 
-        
+            # Then, we copy the current corrector's DOF to y1, which is y_i.
+            # NOTE, here i is the stage value, not necessarily u^{n}.
+            self.y1.data = self.cfg_corrector.fem.gfu.components[0].vec
+
+            # We solve for the predicted solution.
+            for log in self.cfg_predictor.fem.scheme.solve_current_time_level(t0):
+                logger.info(self.parse_routine_log(**log, cfg=self.cfg_predictor))
+
+            # Finally, we copy the last DOF of the predicted solution.
+            # Note, a copy is needed here, because the predictor gfu is shared with 
+            # the interface of the explicit gfu (which will be modified in time).
+            self.y2.data = self.cfg_predictor.fem.gfu.components[0].vec  
+ 
+        else:
+
+            # Deduce the current stage time-step of the predictor.
+            dtp = self.dtp_per_stage[stage]
+
+            # First, we need to reset the predictor state, to the corrector state, 
+            # since this marks a synchronization point.
+            self.cfg_predictor.fem.gfu.components[0].vec.data = self.cfg_corrector.fem.gfu.components[0].vec
+
+            # Then, we also reset the current time, to match the corrector's.
+            self.t1 = t0 
+            # Also, update the time step of the prediction.
+            self.t2 = t0 + dtp
+
+            # Next, we also set the predictor time step, based on the current stage interval.
+            self.cfg_predictor.time.timer.step.Set( dtp )
+
+            # Then, we copy the current corrector's DOF to y1, which is y_i.
+            # NOTE, here i is the stage value, not necessarily u^{n}.
+            self.y1.data = self.cfg_corrector.fem.gfu.components[0].vec
+
+            # Second, we solve for the predicted solution.
+            for log in self.cfg_predictor.fem.scheme.solve_current_time_level(t0):
+                logger.info(self.parse_routine_log(**log, cfg=self.cfg_predictor))
+
+            # Third, we copy the last DOF of the predicted solution.
+            # Note, a copy is needed here, because the predictor gfu is shared with 
+            # the interface of the explicit gfu (which will be modified in time).
+            self.y2.data = self.cfg_predictor.fem.gfu.components[0].vec  
+
     def set_predictor_value(self, t):
         
         # Check if this indeed is an interpolation.
@@ -1126,7 +1181,7 @@ class MultiStagePredictorCorrectorIMEXRoutine(TimeRoutine):
         ell2 = (t - self.t1)/(self.t2 - self.t1)
 
         # Set the interpolated value in the predictor gfu at the interface.
-        self.cfg_predictor.fem.gfu.vec.data = ell1 * self.y1 + ell2 * self.y2
+        self.cfg_predictor.fem.gfu.components[0].vec.data = ell1 * self.y1 + ell2 * self.y2
 
     def start_solution_routine(self, reassemble=True):
 
@@ -1149,11 +1204,12 @@ class MultiStagePredictorCorrectorIMEXRoutine(TimeRoutine):
         self.initialize_predictor_corrector()
 
         # Start marching in time.
-        with self.cfg_corrector.io as io_cor, self.cfg_explicit.io as io_exp:
+        with self.cfg_corrector.io as io_cor, self.cfg_explicit.io as io_exp, self.cfg_predictor.io as io_pre:
 
             io_cor.save_pre_time_routine(gtimer.t.Get())
             io_exp.save_pre_time_routine(gtimer.t.Get())
-
+            io_pre.save_pre_time_routine(gtimer.t.Get())
+            
             # Intervals of dtc, which are global time steps.
             for rate, t0, t1 in gtimer():
 
@@ -1199,18 +1255,26 @@ class MultiStagePredictorCorrectorIMEXRoutine(TimeRoutine):
                 print(f"*  Completed one global (corrector-)time step of: dt = {self.dtc:.5e}" )
                 print( "=====================================================================" )
 
-
                 self.cfg_corrector.fem.scheme.update_solution()
                 self.cfg_corrector.fem.scheme.update_gridfunctions()
 
+                print(flush=True) # separate info for each stage. 
+                yield t1
+
+                self.cfg_predictor.fem.scheme.update_solution()
+                self.cfg_predictor.fem.scheme.update_gridfunctions()
+
                 io_exp.save_in_time_routine(t1, rate)
                 io_cor.save_in_time_routine(t1, rate)
+                io_pre.save_in_time_routine(t1, rate)
 
             io_exp.save_post_time_routine(t1, rate)
             io_cor.save_post_time_routine(t1, rate)
+            io_pre.save_post_time_routine(t1, rate)
 
-        # Reset the time step back to the explicit time step.   
-        self.timer.step.Set( self.dte )
+        # Reset the time steps back to their original values. Note, the predictor is irrelevant.
+        self.cfg_corrector.time.timer.step.Set( self.dtc )
+        self.cfg_explicit.time.timer.step.Set( self.dte_max )
 
     def solve_explicit_stages(self, t0: float) -> bool:
 

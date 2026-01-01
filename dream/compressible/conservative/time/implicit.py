@@ -125,6 +125,24 @@ class BDF2(ImplicitSchemes):
             return (2.0/3.0)*self.dt
         return 2.0*self.dt
 
+class BDF2_Adaptive(ImplicitSchemes):
+    
+    name: str = "bdf2_adaptive"
+    time_levels = ('n-1', 'n', 'n+1')
+
+    def get_time_derivative(self, gfus: dict[str, ngs.GridFunction]) -> ngs.CF:
+        
+        self.dt_new = ngs.Parameter( self.dt.Get() )
+        self.dt_old = ngs.Parameter( self.dt.Get() )
+        
+        r = self.dt_new / self.dt_old
+        ovdtnew = 1.0 / self.dt_new
+
+        alpha1 = (2.0 * r + 1.0) / (r + 1.0)
+        alpha2 = r + 1.0
+        alpha3 = r * r / (r + 1.0)
+        return ovdtnew * ( alpha1 * gfus['n+1'] - alpha2 * gfus['n'] + alpha3 * gfus['n-1'] ) 
+
 class BDF3(ImplicitSchemes):
 
     name: str = "bdf3"
